@@ -46,6 +46,48 @@ function attachPrice(c){
 // Wert = "ab"-Preis (günstigstes Angebot); nur wenn keiner da ist: Trend
 const valueOf = c => { if(c.real > 0) return c.real; const p = c.price; if(!p) return 0; if(c.rh && (p.lowH || p.trendH)) return p.lowH || p.trendH; return p.low || p.trend || p.avg30 || 0; };
 
+// ---------------- Offizielles Kartenbild (statt Handyfoto in der Vorschau) ----------------
+// Pokémon: TCGdex (deutsch, sonst englisch) · One Piece: Limitless-Bildarchiv · Yu-Gi-Oh!: YGOPRODeck
+async function findImg(c){
+  if(c.ygo) return `https://images.ygoprodeck.com/images/cards_small/${c.ygo.pc}.jpg`;
+  if(c.op){ const set = (c.op.id.match(/^([A-Z]+\d*)-/) || [])[1] || "P"; return `https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/one-piece/${set}/${c.op.id}_${c.op.jp ? "JP" : "EN"}.webp`; }
+  if(c.db && c.db.sid){
+    const langs = langShort(c) === "DE" ? ["de", "en"] : ["en", "de"];
+    for(const l of langs){
+      try{
+        const r = await fetch(`https://api.tcgdex.net/v2/${l}/cards/${encodeURIComponent(c.db.sid + "-" + c.db.lid)}`);
+        if(r.ok){ const d = await r.json(); if(d && d.image) return d.image + "/low.webp"; }
+      }catch{}
+    }
+  }
+  return "";
+}
+const IMG_BUSY = new Set();
+async function ensureImg(c){
+  if(c.img !== undefined || IMG_BUSY.has(c.id) || !navigator.onLine) return;
+  IMG_BUSY.add(c.id);
+  try{
+    const u = await findImg(c);
+    if(!u) return;   // später nochmal versuchen
+    c.img = u; saveCard(c); rerender(c);
+  } finally { IMG_BUSY.delete(c.id); }
+}
+// Tippen aufs Kartenbild: groß anzeigen
+const bigImg = u => u.replace(/\/low\.webp$/, "/high.webp").replace("/cards_small/", "/cards/");
+document.addEventListener("click", e => {
+  const im = e.target.closest("img.card-img"); if(!im) return;
+  e.stopPropagation();
+  const ov = document.createElement("div"); ov.className = "bigimg";
+  ov.innerHTML = `<img src="${esc(bigImg(im.src))}" alt="" referrerpolicy="no-referrer"><small>Tippen zum Schließen</small>`;
+  ov.onclick = () => ov.remove(); document.body.appendChild(ov);
+}, true);
+// Bild konnte nicht geladen werden -> eigenes Foto zeigen
+document.addEventListener("error", e => {
+  const im = e.target; if(!(im instanceof HTMLImageElement) || !im.dataset.fallback) return;
+  const fb = im.dataset.fallback; im.removeAttribute("data-fallback");
+  if(fb === "-") im.replaceWith(Object.assign(document.createElement("div"), { className: im.className })); else im.src = fb;
+}, true);
+
 // ---------------- Sammlung (IndexedDB, nur auf diesem Gerät) ----------------
 let coll = [];
 const idb = (() => {
@@ -68,6 +110,8 @@ const collReady = (async () => {
   await Promise.all([cardDbReady, opDbReady, ygoDbReady]);
   coll.forEach(c => attachPrice(c));
   refreshTotals();
+  // Kartenbilder für ältere Einträge nachladen (nacheinander, im Hintergrund)
+  setTimeout(async () => { for(const c of coll.filter(x => x.img === undefined).slice(0, 300)){ await ensureImg(c); await sleep(150); } }, 3000);
 })();
 function refreshTotals(){
   const sum = coll.reduce((s, c) => s + valueOf(c), 0);
@@ -121,7 +165,7 @@ function cardHTML(c, mode){
     : `<div class="note">${(c.op ? OPP : c.ygo ? YGOP : PP) ? "Für diese Karte steht kein Preis in der Cardmarket-Liste – tippe auf den Cardmarket-Button." : "Preisliste noch nicht geladen (sie wird jeden Morgen aktualisiert)."}</div>`;
   return `<div class="card ${mode || ""}" data-card="${esc(c.id)}">
     <div class="rowc">
-      ${c.thumb ? `<img class="thumb" src="${c.thumb}" alt="">` : `<div class="thumb"></div>`}
+      ${c.img ? `<img class="thumb card-img" src="${esc(c.img)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-fallback="${c.thumb ? esc(c.thumb) : "-"}">` : c.thumb ? `<img class="thumb" src="${c.thumb}" alt="">` : `<div class="thumb"></div>`}
       <div class="info">
         <h3>${esc(c.name || c.name_en || "Unbekannt")}${c.name_jp && c.name_jp !== c.name ? ` <span style="font-weight:400;color:var(--muted);font-size:13px">${esc(c.name_jp)}</span>` : ""}</h3>
         <div class="meta"><span class="game g-${esc(c.game || "pokemon")}">${{ onepiece: "One Piece", yugioh: "Yu-Gi-Oh!" }[c.game] || "Pokémon"}</span> <b>${esc(code)}</b>${c.set ? " · " + esc(c.set) : ""}${c.rarity && c.ygo ? " · " + esc(c.rarity) : ""}${c.language ? " · " + esc(c.language) : ""}</div>
@@ -525,6 +569,7 @@ function addCard(c, thumb){
   const t = document.createElement("div"); t.innerHTML = cardHTML(c, "latest");
   $("results").prepend(t.firstElementChild);
   if(navigator.vibrate) navigator.vibrate(60);
+  ensureImg(c);
   toast(`✓ ${c.name} · ${c.op ? c.op.id : c.ygo ? c.number : cmCode(c)} · ${eur(valueOf(c))}`);
 }
 function chooseFrom(list, thumb, why){
