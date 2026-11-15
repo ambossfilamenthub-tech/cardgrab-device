@@ -29,18 +29,40 @@ def kw(k):
     if m: return f"DON!! x{m.group(1)}"
     return k
 
-def load_model():
-    import ctranslate2, sentencepiece
+UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36"}
+def load_argos():
     d = "/tmp/argos-ende"
     if not os.path.isdir(d):
         z = "/tmp/ende.argosmodel"
-        urllib.request.urlretrieve(MODEL_URL, z)
+        with urllib.request.urlopen(urllib.request.Request(MODEL_URL, headers=UA), timeout=300) as r, open(z, "wb") as f:
+            f.write(r.read())
         zipfile.ZipFile(z).extractall(d)
     mdir = next(os.path.dirname(p) for p in glob.glob(d + "/**/model.bin", recursive=True))
     spm = next(iter(glob.glob(d + "/**/sentencepiece.model", recursive=True)))
+    return mdir, spm, spm
+
+def load_marian():
+    # Ersatz: OPUS-MT en→de von Hugging Face, einmalig nach CTranslate2 umgewandelt
+    import subprocess
+    d = "/tmp/opus-ende-ct2"
+    if not os.path.isdir(d):
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "torch", "--index-url", "https://download.pytorch.org/whl/cpu"], check=True)
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "transformers", "sacremoses", "huggingface_hub"], check=True)
+        subprocess.run(["ct2-transformers-converter", "--model", "Helsinki-NLP/opus-mt-en-de", "--output_dir", d, "--quantization", "int8"], check=True)
+        from huggingface_hub import hf_hub_download
+        for n in ("source.spm", "target.spm"):
+            import shutil; shutil.copy(hf_hub_download("Helsinki-NLP/opus-mt-en-de", n), os.path.join(d, n))
+    return d, os.path.join(d, "source.spm"), os.path.join(d, "target.spm")
+
+def load_model():
+    import ctranslate2, sentencepiece
+    try:
+        mdir, s_spm, t_spm = load_argos(); kind = "argos"
+    except Exception as ex:
+        print("Argos-Modell nicht ladbar (", ex, ") → OPUS-MT", flush=True)
+        mdir, s_spm, t_spm = load_marian(); kind = "marian"
     tr = ctranslate2.Translator(mdir, device="cpu", compute_type="int8", inter_threads=2, intra_threads=2)
-    sp = sentencepiece.SentencePieceProcessor(model_file=spm)
-    return tr, sp
+    return tr, sentencepiece.SentencePieceProcessor(model_file=s_spm), sentencepiece.SentencePieceProcessor(model_file=t_spm), kind
 
 SENT = re.compile(r"(?<=[.!?])\s+(?=[A-Z(\"'])")
 def translate_all(texts):
@@ -50,17 +72,18 @@ def translate_all(texts):
     if STUB:
         for t in todo: cache[t] = "[DE] " + t
         return
-    tr, sp = load_model()
+    tr, sp, tp, kind = load_model()
+    print("Modell:", kind, flush=True)
     # in Sätze zerlegen, Sätze gebündelt übersetzen
     sents = sorted({s for t in todo for s in SENT.split(t) if s.strip()})
     out = {}
     B = 64
     for i in range(0, len(sents), B):
         chunk = sents[i:i + B]
-        toks = [sp.encode(s, out_type=str) for s in chunk]
+        toks = [sp.encode(s, out_type=str) + (["</s>"] if kind == "marian" else []) for s in chunk]
         res = tr.translate_batch(toks, beam_size=2, max_decoding_length=256)
         for s, r in zip(chunk, res):
-            out[s] = sp.decode(r.hypotheses[0]).replace("▁", " ").strip()
+            out[s] = tp.decode([x for x in r.hypotheses[0] if x not in ("</s>", "<pad>")]).replace("▁", " ").strip()
         if i % (B * 20) == 0: print(f"  {i}/{len(sents)}", flush=True)
     for t in todo:
         cache[t] = " ".join(out.get(s, s) for s in SENT.split(t) if s.strip())
