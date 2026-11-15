@@ -52,6 +52,18 @@ async function pokemon(){
     hit++;
   }
   writeJson("prices-pokemon.json", { date: (pg.createdAt || today()).slice(0, 10), n: hit, p });
+  // Diagnose: wie benennt Cardmarket Versionen? (Beispiel Pikachu TEF 051 = 760681)
+  try{
+    const pl = list(await getJson("list", GAME.pokemon), "products", "productList");
+    const me = pl.find(x => Number(x.idProduct) === 760681);
+    if(me){
+      console.log("  DIAG Produkt:", JSON.stringify(me));
+      const same = pl.filter(x => x.idExpansion === me.idExpansion && String(x.name).startsWith("Pikachu"));
+      console.log("  DIAG gleiche Erweiterung:", JSON.stringify(same.slice(0, 12)));
+      const meta = pl.filter(x => x.idMetacard === me.idMetacard).slice(0, 12);
+      console.log("  DIAG gleiche Metakarte:", JSON.stringify(meta));
+    }
+  }catch(e){ console.log("  DIAG Fehler", e.message); }
   console.log(`  Pokémon: ${rows.length} Preise geladen, ${hit} passen zu Karten der Datenbank (${wanted.size} bekannt)`);
 }
 
