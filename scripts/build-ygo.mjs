@@ -51,6 +51,7 @@ for(const c of en.data || []){
     if(!list.some(x => x[0] === c.id && x[1] === rc)){ list.push([c.id, rc, s.set_rarity || ""]); prints++; }
   }
 }
+if(Object.keys(C).length < 10000) throw new Error(`nur ${Object.keys(C).length} Karten von YGOPRODeck – Abbruch, alte Daten bleiben`);
 fs.writeFileSync(path.join(SITE, "ygodb.json"), JSON.stringify({ s: S, c: C, a: A, p: P }));
 const td = path.join(SITE, "ygotext"); fs.mkdirSync(td, { recursive: true });
 for(const [b, o] of Object.entries(T)) fs.writeFileSync(path.join(td, b + ".json"), JSON.stringify(o));

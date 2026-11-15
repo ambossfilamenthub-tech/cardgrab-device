@@ -31,6 +31,11 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 function writeJson(name, obj){
   const f = path.join(SITE, name);
+  // Schutz: liefert die Quelle plötzlich viel weniger Preise (Störung), die alte Liste behalten
+  try{
+    const old = JSON.parse(fs.readFileSync(f, "utf8"));
+    if(old && old.n > 100 && !(obj.n >= old.n * 0.5)){ console.log(`⚠ ${name}: nur ${obj.n} statt ${old.n} Einträge – alte Liste bleibt`); return; }
+  }catch{}
   fs.writeFileSync(f, JSON.stringify(obj));
   console.log(`✔ ${name}: ${(fs.statSync(f).size / 1024).toFixed(0)} KB`);
 }
