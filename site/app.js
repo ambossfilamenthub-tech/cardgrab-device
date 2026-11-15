@@ -145,6 +145,13 @@ function setReal(id){
 }
 document.addEventListener("keydown", e => { const i = e.target.closest && e.target.closest("[data-real]"); if(i && e.key === "Enter"){ e.preventDefault(); setReal(i.dataset.real); } });
 document.addEventListener("click", e => {
+  const head = e.target.closest(".card .rowc");
+  if(head && !e.target.closest("a,button,input")){
+    const card = head.closest(".card");
+    if(card.classList.contains("old")) card.classList.remove("old");
+    else if(!card.classList.contains("latest") && card.dataset.card) card.classList.add("old");
+    return;
+  }
   const ro = e.target.closest("[data-realok]"); if(ro){ setReal(ro.dataset.realok); return; }
   const sb = e.target.closest("[data-say]"); if(sb){ const c = coll.find(x => x.id === sb.dataset.say); if(c) speakCard(c); return; }
   const d = e.target.closest("[data-del]"); if(d){ removeCard(d.dataset.del); return; }
@@ -573,18 +580,26 @@ async function loop(){
       if(!armed){
         // nach einem Foto: erst wieder auslösen, wenn eine andere Karte im Rahmen liegt
         if(Date.now() - lastShotAt > 1200 && (motion > 18 || !present || sharp < lastShotSharp * 0.45)){ armed = true; steady = 0; }
-        $("readOut").textContent = "✓ Foto gemacht – nächste Karte in den Rahmen";
+        $("readOut").textContent = "✓ Foto gemacht – nächste Karte" + queueInfo();
       } else {
         // locker: leichte Handbewegung ist ok, Bild muss nur halbwegs scharf sein
         const good = present && motion < 14 && sharp > 14 && sharp >= peak * 0.6;
         steady = good ? steady + 1 : 0;
         $("frame").classList.toggle("focus", steady > 0);
-        $("readOut").textContent = !present ? "Karte in den Rahmen halten" : motion >= 14 ? "Etwas ruhiger halten …" : sharp <= 14 ? "Wird scharf gestellt …" : steady ? "Scharf ✓ – Foto!" : "Fokussiere …";
+        $("readOut").textContent = (!present ? "Karte in den Rahmen halten" : motion >= 14 ? "Etwas ruhiger halten …" : sharp <= 14 ? "Wird scharf gestellt …" : steady ? "Scharf ✓ – Foto!" : "Fokussiere …") + queueInfo();
         if(steady >= 2){ await autoShot(v, X, Y, Wd, Hd, sharp); prev = null; }
       }
     }catch(e){ console.warn(e); }
     await sleep(60);
   }
+}
+// Warteschlange: Kamera fotografiert weiter, Analyse läuft nacheinander im Hintergrund
+const shotQ = []; let qRunning = false;
+function queueInfo(){ const n = shotQ.length + (qRunning ? 1 : 0); return n ? ` · ${n} in Analyse` : ""; }
+async function runQueue(){
+  if(qRunning) return; qRunning = true;
+  try{ while(shotQ.length){ const cv = shotQ.shift(); try{ await analyzePhoto(cv, { keepCam: true }); }catch(e){ console.warn(e); } } }
+  finally{ qRunning = false; }
 }
 async function autoShot(v, X, Y, Wd, Hd, sharp){
   busy = true; armed = false; lastShotSharp = sharp; lastShotAt = Date.now(); steady = 0;
@@ -597,7 +612,8 @@ async function autoShot(v, X, Y, Wd, Hd, sharp){
   const cv = document.createElement("canvas"); cv.width = Math.round(x1 - x0); cv.height = Math.round(y1 - y0);
   cv.getContext("2d").drawImage(v, x0, y0, x1 - x0, y1 - y0, 0, 0, cv.width, cv.height);
   setTimeout(() => $("frame").classList.remove("hit"), 600);
-  try{ await analyzePhoto(cv); } finally { busy = false; lastShotAt = Date.now(); }
+  shotQ.push(cv); busy = false; lastShotAt = Date.now();
+  runQueue();
 }
 function cardThumb(src, x, y, w, h){
   const c = document.createElement("canvas"); c.width = 120; c.height = Math.round(120 * 88 / 63);
@@ -631,11 +647,13 @@ function photoBox(thumb, text){
   document.querySelectorAll("#results .card.latest").forEach(el => { el.classList.remove("latest"); el.classList.add("old"); });
   const el = document.createElement("div"); el.className = "card latest";
   el.innerHTML = `<div class="rowc">${thumb ? `<img class="thumb" src="${thumb}" alt="">` : ""}<div class="info"><h3>📸 Foto wird analysiert …</h3><div class="meta" id="anaStep">${esc(text || "")}</div></div></div>`;
-  $("results").prepend(el); el.scrollIntoView({ behavior: "smooth", block: "center" });
+  $("results").prepend(el);
+  if(!stream) el.scrollIntoView({ behavior: "smooth", block: "center" });   // bei offener Kamera bleibt die Ansicht oben
   return el;
 }
-async function analyzePhoto(file){
-  showTab("scan");
+async function analyzePhoto(file, opts){
+  const keepCam = !!(opts && opts.keepCam);
+  if(!keepCam) showTab("scan");
   let bmp;
   if(file instanceof HTMLCanvasElement) bmp = file;
   else { try{ bmp = await createImageBitmap(file, { imageOrientation: "from-image" }); }catch{ bmp = await createImageBitmap(file); } }
@@ -651,7 +669,7 @@ async function analyzePhoto(file){
   const step = t => { const m = box.querySelector("#anaStep"); if(m) m.textContent = t; };
   await Promise.all([ocrReady, cardDbReady, opDbReady]);
   if(!worker){ box.remove(); setStatus("Texterkennung nicht verfügbar – bitte manuell eingeben."); return; }
-  const wasPaused = paused; paused = true;
+  const wasPaused = paused; if(!keepCam) paused = true;
   const texts = [];
   const tryArea = async (src, x, y, w, h, label, opts) => {
     step(label);
