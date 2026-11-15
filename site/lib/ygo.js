@@ -2,8 +2,20 @@
 // Preise (Cardmarket, täglich), Links, Kartenansicht und Vorlesen.
 "use strict";
 let YGO = null, YGOP = null, YGO_BYPC = null;
-const ygoDbReady = new Promise(r => setTimeout(r, 200)).then(() => fetch("ygodb.json")).then(r => r.ok ? r.json() : null).then(d => { YGO = d; return d; }).catch(() => null);
-const ygoPricesReady = fetch("prices-yugioh.json", { cache: "no-cache" }).then(r => r.ok ? r.json() : null).then(d => { YGOP = d; return d; }).catch(() => null);
+// Yu-Gi-Oh!-Daten (≈ 6 MB) erst laden, wenn sie gebraucht werden: beim Scannen, bei Yu-Gi-Oh!-Karten in der
+// Sammlung oder nach ein paar Sekunden Leerlauf – so öffnet sich die App sofort.
+let _ygoDb = null, _ygoPr = null;
+const YGO_HOOKS = { db: [], prices: [] };
+function ygoLoad(){
+  if(!_ygoDb){
+    _ygoDb = fetch("ygodb.json").then(r => r.ok ? r.json() : null).then(d => { YGO = d; YGO_HOOKS.db.forEach(f => { try{ f(d); }catch{} }); return d; }).catch(() => null);
+    _ygoPr = fetch("prices-yugioh.json", { cache: "no-cache" }).then(r => r.ok ? r.json() : null).then(d => { YGOP = d; YGO_HOOKS.prices.forEach(f => { try{ f(d); }catch{} }); return d; }).catch(() => null);
+  }
+  return _ygoDb;
+}
+// "await ygoDbReady" startet das Laden bei Bedarf
+const ygoDbReady = { then(res, rej){ return ygoLoad().then(res, rej); } };
+const ygoPricesReady = { then(res, rej){ ygoLoad(); return _ygoPr.then(res, rej); } };
 
 const YGO_LANG = { EN: "Englisch", E: "Englisch", DE: "Deutsch", G: "Deutsch", FR: "Französisch", F: "Französisch", IT: "Italienisch", I: "Italienisch",
   SP: "Spanisch", S: "Spanisch", PT: "Portugiesisch", P: "Portugiesisch", JP: "Japanisch", JA: "Japanisch", KR: "Koreanisch", AE: "Englisch" };
