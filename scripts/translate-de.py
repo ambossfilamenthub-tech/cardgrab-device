@@ -68,6 +68,7 @@ def load_model():
 
 PRE = [(r"\{([^}]+)\} type (card|Character|Event|Stage)s?", r'\2 with the type "\1"'),
        (r"take an extra turn after this one", "take another turn after this turn"),
+       (r"\bGY\b", "Graveyard"), (r"\bATK\b", "attack points"), (r"\bDEF\b", "defense points"), (r"\bLP\b", "Life Points"),
        (r"\bFlip a coin\b", "Toss a coin"), (r"\bIf heads\b", "If the coin shows heads"), (r"\bIf tails\b", "If the coin shows tails")]
 def pre_en(t):
     for a, b in PRE: t = re.sub(a, b, t)
@@ -129,7 +130,9 @@ def fix_de(t):
                  ("Schadenszählern", "Schadensmarken"), ("Bank Pokémon", "Bank-Pokémon"), ("Preiskarte nehmen", "Preiskarte ziehen"),
                  ("Widerstand", "Resistenz"), ("der nächsten Runde", "des nächsten Zuges"), ("nächsten Runde", "nächsten Zuges"), ("nächste Runde", "nächsten Zug"), ("Evolved Pokémon", "entwickeltes Pokémon"),
                  ("Basic Pokémon", "Basis-Pokémon"), ("Bench", "Bank"), ("Defending Pokémon", "verteidigende Pokémon"),
-                 ("drehe dich nach dieser Wende noch einmal um", "mache nach diesem Zug einen weiteren Zug")]:
+                 ("drehe dich nach dieser Wende noch einmal um", "mache nach diesem Zug einen weiteren Zug"),
+                 ("Angriffspunkte", "ANG"), ("Verteidigungspunkte", "VER"), ("Lebenspunkte", "LP"), ("Sonderbeschwörung", "Spezialbeschwörung"),
+                 ("Speziell beschwören", "Als Spezialbeschwörung beschwören"), ("Friedhof", "Friedhof")]:
         t = t.replace(a, b)
     return t
 
@@ -147,7 +150,7 @@ def op_plain(p):
     return p.replace("DON‼", "DON!!").strip(" :")
 
 # ---------- Sammeln ----------
-facts_files = sorted(glob.glob(os.path.join(SITE, "facts", "*.json")))
+facts_files = sorted(glob.glob(os.path.join(SITE, "facts", "*.json")) + glob.glob(os.path.join(SITE, "ygotext", "*.json")))
 facts = {f: json.load(open(f, encoding="utf8")) for f in facts_files}
 need = set()
 def walk(x, fn):

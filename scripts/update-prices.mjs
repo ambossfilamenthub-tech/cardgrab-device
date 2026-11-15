@@ -9,7 +9,7 @@ import path from "node:path";
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const SITE = path.join(ROOT, "site");
 const BASE = process.env.CM_BASE || "https://downloads.s3.cardmarket.com/productCatalog";
-const GAME = { pokemon: 6, onepiece: Number(process.env.CM_GAME_ONEPIECE || 18) };
+const GAME = { pokemon: 6, onepiece: Number(process.env.CM_GAME_ONEPIECE || 18), yugioh: 3 };
 const LOCAL = process.env.CM_LOCAL_DIR || "";   // für Tests: Dateien aus einem Ordner statt aus dem Netz
 
 async function getJson(kind, game){
@@ -146,8 +146,91 @@ async function onepiece(){
   console.log(`  One Piece: ${products.length} Produkte, ${map.size} einer Karten-ID zugeordnet (${Object.keys(c).length} IDs), ${expPack.size}/${byExp.size} Erweiterungen erkannt`);
 }
 
+// ---------------- Yu-Gi-Oh! ----------------
+// Cardmarket kennt keine Set-Kürzel (LOB-005). Zuordnung: Erweiterung -> Set (Namensabgleich mit YGOPRODeck),
+// dann Name im Set -> Kürzel; mehrere Seltenheiten = mehrere Versionen (Seltenheit aus "(V.1 - Ultra Rare)").
+const RAR_RANK = ["common", "shortprint", "rare", "superrare", "ultrarare", "ultimaterare", "secretrare", "prismaticsecretrare", "platinumsecretrare", "quartercenturysecretrare", "starlightrare", "ghostrare", "collectorsrare", "goldrare", "goldsecretrare"];
+const rnk = r => { const i = RAR_RANK.indexOf(r); return i < 0 ? 99 : i; };
+const rn = t => String(t || "").toLowerCase().replace(/[^a-z]/g, "");
+async function yugioh(){
+  const dbf = path.join(SITE, "ygodb.json");
+  if(!fs.existsSync(dbf)) throw new Error("ygodb.json fehlt");
+  const db = JSON.parse(fs.readFileSync(dbf, "utf8"));
+  const [pg, pl] = await Promise.all([getJson("price", GAME.yugioh), getJson("list", GAME.yugioh)]);
+  const prices = new Map();
+  for(const row of list(pg, "priceGuides", "priceguides", "prices")){
+    const id = Number(row.idProduct ?? row.idproduct ?? row.id);
+    if(id) prices.set(id, [num(row, "low"), num(row, "trend"), num(row, "avg7"), num(row, "avg30")].map(r2));
+  }
+  const products = list(pl, "products", "productList").map(x => {
+    const name = String(x.name || x.enName || "");
+    const m = name.match(/\s*\(([^)]*)\)\s*$/);
+    let rar = "";
+    if(m){ const mm = m[1].match(/^V\.?\s*\d+\s*[-–]\s*(.+)$/i); rar = rn(mm ? mm[1] : m[1]); }
+    return { id: Number(x.idProduct ?? x.id), base: nrm(name.replace(/\s*\([^)]*\)\s*$/, "")), raw: name, rar, exp: x.idExpansion ?? null };
+  }).filter(x => x.id);
+  console.log("  Yu-Gi-Oh! Beispiele:", products.slice(0, 5).map(p => p.raw).join(" | "));
+  // Set-Name -> Kartenname -> [[Kürzel, Seltenheit]]
+  const sets = new Map();
+  for(const [key, ent] of Object.entries(db.p)){
+    const sn = db.s[key.split("-")[0]]; if(!sn) continue;
+    if(!sets.has(sn)) sets.set(sn, new Map());
+    const m = sets.get(sn);
+    for(const [pc, rc, rar] of ent){
+      const c = db.c[pc]; if(!c) continue;
+      const n = nrm(c[0]); if(!m.has(n)) m.set(n, []);
+      m.get(n).push([key, rn(rar), rar]);
+    }
+  }
+  // Wörter-Index: Kartenname -> Sets
+  const nameSets = new Map();
+  for(const [sn, m] of sets) for(const n of m.keys()){ if(!nameSets.has(n)) nameSets.set(n, new Set()); nameSets.get(n).add(sn); }
+  const byExp = new Map();
+  for(const p of products){ if(p.exp == null) continue; if(!byExp.has(p.exp)) byExp.set(p.exp, []); byExp.get(p.exp).push(p); }
+  const expSet = new Map();
+  for(const [exp, ps] of byExp){
+    const names = new Set(ps.map(p => p.base));
+    const votes = new Map();
+    for(const n of names) for(const sn of nameSets.get(n) || []) votes.set(sn, (votes.get(sn) || 0) + 1);
+    let best = null, bs = 0;
+    for(const [sn, v] of votes){ const sc = v / Math.max(names.size, sets.get(sn).size); if(sc > bs){ bs = sc; best = sn; } }
+    const v = best ? votes.get(best) : 0;
+    if(best && (bs >= 0.5 || (v >= 3 && bs >= 0.3))) expSet.set(exp, best);
+  }
+  const c = {}; let mapped = 0, guess = 0;
+  const put = (key, p, g, rarLabel) => { const pr = prices.get(p.id) || [0, 0, 0, 0]; const l = c[key] ||= []; if(!l.some(x => x[0] === p.id)){ l.push([p.id, ...pr, g ? 1 : 0, rarLabel || ""]); mapped++; if(g) guess++; } };
+  for(const [exp, ps] of byExp){
+    const sn = expSet.get(exp); if(!sn) continue;
+    const m = sets.get(sn);
+    const byName = new Map();
+    for(const p of ps){ if(!byName.has(p.base)) byName.set(p.base, []); byName.get(p.base).push(p); }
+    for(const [n, pl] of byName){
+      const E = m.get(n); if(!E) continue;
+      pl.sort((a, b) => a.id - b.id);
+      const keys = [...new Set(E.map(e => e[0]))];
+      if(pl.some(p => p.rar)){
+        const used = new Set();
+        for(const p of pl){
+          const hit = E.filter(e => e[1] && e[1] === p.rar);
+          if(hit.length){ hit.forEach(e => put(e[0], p, false, e[2])); used.add(p.id); }
+        }
+        const rest = pl.filter(p => !used.has(p.id));
+        for(const p of rest) keys.forEach(k => put(k, p, true));
+      } else if(pl.length === 1){
+        keys.forEach(k => put(k, pl[0], E.length > 1, E.length === 1 ? E[0][2] : ""));
+      } else {
+        const Es = [...E].sort((a, b) => rnk(a[1]) - rnk(b[1]));
+        if(Es.length === pl.length) pl.forEach((p, i) => put(Es[i][0], p, true, Es[i][2]));
+        else for(const p of pl) keys.forEach(k => put(k, p, true));
+      }
+    }
+  }
+  writeJson("prices-yugioh.json", { date: (pg.createdAt || today()).slice(0, 10), n: mapped, c });
+  console.log(`  Yu-Gi-Oh!: ${products.length} Produkte, ${expSet.size}/${byExp.size} Erweiterungen erkannt, ${mapped} Versionen für ${Object.keys(c).length} Kürzel (${guess} geschätzt)`);
+}
+
 let failed = 0;
-for(const [name, fn] of [["Pokémon", pokemon], ["One Piece", onepiece]]){
+for(const [name, fn] of [["Pokémon", pokemon], ["One Piece", onepiece], ["Yu-Gi-Oh!", yugioh]]){
   try{ await fn(); } catch(e){ failed++; console.error(`✖ ${name}: ${e.message}`); }
 }
-if(failed === 2) process.exit(1);
+if(failed === 3) process.exit(1);
