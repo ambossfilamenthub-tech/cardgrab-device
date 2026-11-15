@@ -180,41 +180,84 @@ async function factsFor(sid){
   const p = fetch(`facts/${encodeURIComponent(sid)}.json`).then(r => r.ok ? r.json() : null).catch(() => null);
   FACTS.set(sid, p); return p;
 }
-// Sprech-Abschnitte: [{t: Text, l: "de-DE" | "en-US"}]
+// Sprech-Abschnitte: [{t: Text, l: "de-DE" | "en-US"}] – in natürlichen Sätzen
+const ORD = ["Erste", "Zweite", "Dritte", "Vierte"];
+const num = n => { const x = Number(n); return isFinite(x) ? x.toLocaleString("de-DE") : String(n); };
+const TYPE_ADJ = { Grass: "Pflanzen", Fire: "Feuer", Water: "Wasser", Lightning: "Elektro", Psychic: "Psycho", Fighting: "Kampf", Darkness: "Unlicht", Metal: "Stahl", Fairy: "Feen", Dragon: "Drachen", Colorless: "farbloses" };
+function sayDamage(d){
+  const s = String(d ?? "").trim(); if(!s) return "";
+  const m = s.match(/^(\d+)\s*([+×x−-])?$/);
+  if(!m) return `${s} Schaden`;
+  const n = num(m[1]);
+  return m[2] === "+" ? `${n} Schaden oder mehr` : (m[2] === "×" || m[2] === "x") ? `${n} Schaden mal Anzahl` : (m[2] ? `${n} Schaden oder weniger` : `${n} Schaden`);
+}
 async function speechParts(c){
+  const parts = [], de = t => t && parts.push({ t, l: "de-DE" }), en = t => t && parts.push({ t, l: "en-US" });
   if(c.op){
-    const o = c.op, de = [];
-    de.push(`${c.name}. ${o.cat === "Leader" ? "Leader" : o.cat === "Character" ? "Charakter" : o.cat || ""}${o.color ? ", Farbe " + o.color.replace(/Red/g, "Rot").replace(/Green/g, "Grün").replace(/Blue/g, "Blau").replace(/Purple/g, "Lila").replace(/Black/g, "Schwarz").replace(/Yellow/g, "Gelb").replace("/", " und ") : ""}.`);
-    if(o.cost != null) de.push(o.cat === "Leader" ? `${o.cost} Leben.` : `Kosten ${o.cost}.`);
-    if(o.power) de.push(`Stärke ${o.power}.`);
-    if(o.counter) de.push(`Konter plus ${o.counter}.`);
-    const parts = [{ t: de.join(" "), l: "de-DE" }];
-    if(o.effect) parts.push({ t: "Effekt:", l: "de-DE" }, { t: o.effect.replace(/\[|\]/g, ""), l: "en-US" });
-    if(o.trigger) parts.push({ t: "Trigger:", l: "de-DE" }, { t: o.trigger.replace(/\[|\]/g, ""), l: "en-US" });
+    const o = c.op;
+    const col = (o.color || "").replace(/Red/g, "rot").replace(/Green/g, "grün").replace(/Blue/g, "blau").replace(/Purple/g, "lila").replace(/Black/g, "schwarz").replace(/Yellow/g, "gelb").replace("/", " und ");
+    const kind = o.cat === "Leader" ? "Leader" : o.cat === "Character" ? "Charakter" : o.cat === "Event" ? "Event-Karte" : o.cat === "Stage" ? "Orts-Karte" : "Karte";
+    const nm = c.name.replace(/\.(?=[A-Z]\.)/, " ").replace(/\.(?=\S)/g, ". ");
+    de(`${nm}, ein ${kind}${col ? " in " + col.charAt(0).toUpperCase() + col.slice(1) : ""}.`);
+    if(o.cat === "Leader" && o.cost != null) de(`Er hat ${o.cost} Leben${o.power ? " und eine Stärke von " + num(o.power) : ""}.`);
+    else {
+      const bits = [];
+      if(o.cost != null) bits.push(`kostet ${o.cost} DON`);
+      if(o.power) bits.push(`hat eine Stärke von ${num(o.power)}`);
+      if(bits.length) de(`Die Karte ${bits.join(" und ")}.`);
+      if(o.counter) de(`Als Konter gibt sie plus ${num(o.counter)}.`);
+    }
+    if(o.effect){ de("Der Effekt lautet:"); en(o.effect.replace(/\[|\]/g, "").replace(/DON!!/g, "DON").replace(/➀|①/g, "1").replace(/➁|②/g, "2")); }
+    if(o.trigger){ de("Trigger:"); en(o.trigger.replace(/\[|\]/g, "")); }
     return parts;
   }
   if(!c.db || !c.db.sid) return null;
   const all = await factsFor(c.db.sid); const e = all && (all[c.db.lid] || all[String(c.db.lid).replace(/^0+/, "")]);
   if(!e) return null;
-  const out = [`${c.name}.`];
   if(e.c && e.c !== "Pokemon"){
-    out.push(e.c === "Trainer" ? `Trainerkarte${e.tt ? " (" + ({ Item: "Item", Supporter: "Unterstützer", Stadium: "Stadion", Tool: "Ausrüstung" }[e.tt] || e.tt) + ")" : ""}.` : "Energiekarte.");
-    if(e.e) out.push(sayClean(e.e));
-  } else {
-    if(e.hp) out.push(`${e.hp} KP.`);
-    if(e.t) out.push(`Typ ${e.t.map(t => TYPE_DE[t] || t).join(" und ")}.`);
-    if(e.st) out.push(`${STAGE_DE[e.st] || e.st}.`);
-    for(const [n, eff] of e.ab || []) out.push(`Fähigkeit ${n}: ${sayClean(eff)}`);
-    for(const [n, d, eff] of e.a || []) out.push(`Attacke ${n}${d !== "" ? ", " + dmgText(d) : ""}.${eff ? " " + sayClean(eff) : ""}`);
-    if(e.w) out.push(`Schwäche ${e.w.map(t => TYPE_DE[t] || t).join(" und ")}.`);
-    if(e.r !== undefined) out.push(`Rückzug ${e.r}.`);
+    const kind = e.c === "Trainer" ? ({ Item: "eine Item-Karte", Supporter: "eine Unterstützer-Karte", Stadium: "eine Stadion-Karte", Tool: "eine Ausrüstungs-Karte" }[e.tt] || "eine Trainerkarte") : "eine Energiekarte";
+    de(`${c.name} ist ${kind}.`);
+    if(e.e) for(const t of sentences(sayClean(e.e))) de(t);
+    return parts;
   }
-  return [{ t: out.join(" "), l: "de-DE" }];
+  const typ = e.t ? e.t.map(t => TYPE_DE[t] || t).join(" und ") : "";
+  const stage = { Basic: "ein Basis-Pokémon", Stage1: "ein Phase-1-Pokémon", Stage2: "ein Phase-2-Pokémon", VMAX: "ein VMAX-Pokémon", VSTAR: "ein VSTAR-Pokémon", MEGA: "ein Mega-Pokémon", BREAK: "ein TURBO-Pokémon", "LEVEL-UP": "ein Level-Up-Pokémon" }[e.st] || "ein Pokémon";
+  de(`${c.name}${e.hp ? ` hat ${num(e.hp)} Kraftpunkte.` : "."} Es ist ${stage}${typ ? " vom Typ " + typ : ""}.`);
+  (e.ab || []).forEach(([n, eff]) => { de(`Fähigkeit: ${n}.`); for(const t of sentences(sayClean(eff))) de(t); });
+  (e.a || []).forEach(([n, d, eff], i) => {
+    const dm = sayDamage(d);
+    de(`${(e.a.length > 1 ? (ORD[i] || (i + 1) + ".") + " Attacke" : "Attacke")}: ${n}${dm ? ", " + dm : ""}.`);
+    for(const t of sentences(sayClean(eff))) de(t);
+  });
+  const tail = [];
+  if(e.w && e.w.length) tail.push(`Schwäche gegen ${e.w.map(t => TYPE_DE[t] || t).join(" und ")}`);
+  if(e.r !== undefined) tail.push(e.r ? `Rückzugskosten ${e.r}` : "keine Rückzugskosten");
+  if(tail.length) de(tail.join(", ") + ".");
+  return parts;
+}
+const sentences = t => String(t || "").split(/(?<=[.!?])\s+(?=[A-ZÄÖÜ0-9])/).map(x => x.trim()).filter(Boolean);
+// beste Stimme: gespeicherte Wahl > hochwertige (Google / Natural / Neural / Premium / Online) > Netz-Stimmen > Rest
+function voiceList(lang){ const p = lang.slice(0, 2); return speechSynthesis.getVoices().filter(v => v.lang && v.lang.toLowerCase().replace("_", "-").startsWith(p)); }
+function voiceScore(v, lang){
+  let s = 0; const n = v.name.toLowerCase();
+  if(v.lang.replace("_", "-") === lang) s += 5;
+  if(/natural|neural|premium|enhanced|wavenet|online/.test(n)) s += 20;
+  if(/google/.test(n)) s += 12;
+  if(!v.localService) s += 6;
+  if(/compact|espeak/.test(n)) s -= 20;
+  return s;
 }
 function voiceFor(lang){
-  const vs = speechSynthesis.getVoices(); const p = lang.slice(0, 2);
-  return vs.find(v => v.lang === lang) || vs.find(v => v.lang && v.lang.toLowerCase().startsWith(p)) || null;
+  const vs = voiceList(lang); if(!vs.length) return null;
+  try{ const saved = localStorage.getItem("cgd-voice-" + lang.slice(0, 2)); const v = saved && vs.find(x => x.name === saved); if(v) return v; }catch{}
+  return vs.slice().sort((a, b) => voiceScore(b, lang) - voiceScore(a, lang))[0];
 }
+function voicePicker(){
+  const vs = voiceList("de-DE"); if(vs.length < 2) return "";
+  const cur = voiceFor("de-DE");
+  return `<label class="voice">Stimme: <select data-voice>${vs.map(v => `<option ${cur && v.name === cur.name ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</select></label>`;
+}
+document.addEventListener("change", e => { const s = e.target.closest("[data-voice]"); if(s){ try{ localStorage.setItem("cgd-voice-de", s.value); }catch{} toast("Stimme gespeichert – nächstes Vorlesen klingt so"); } });
 function stopSpeaking(){ try{ speechSynthesis.cancel(); }catch{} const id = speakingId; speakingId = null; const c = coll.find(x => x.id === id); if(c) rerender(c); }
 async function speakCard(c){
   if(!("speechSynthesis" in window)){ toast("Dein Browser kann nicht vorlesen"); return; }
@@ -223,11 +266,15 @@ async function speakCard(c){
   const parts = await speechParts(c);
   if(!parts){ toast("Für diese Karte gibt es keine Vorlese-Daten"); return; }
   speakingId = c.id; rerender(c);
-  document.querySelectorAll(`[data-facts="${CSS.escape(c.id)}"]`).forEach(el => { el.hidden = false; el.textContent = parts.map(p => p.t).join(" "); });
+  const show = () => document.querySelectorAll(`[data-facts="${CSS.escape(c.id)}"]`).forEach(el => { el.hidden = false; el.innerHTML = esc(parts.map(p => p.t).join(" ")) + voicePicker(); });
+  show();
   speechSynthesis.cancel();
-  parts.forEach((p, i) => {
-    const u = new SpeechSynthesisUtterance(p.t); u.lang = p.l; const v = voiceFor(p.l); if(v) u.voice = v; u.rate = 1;
-    if(i === parts.length - 1) u.onend = u.onerror = () => { if(speakingId === c.id){ speakingId = null; rerender(c); document.querySelectorAll(`[data-facts="${CSS.escape(c.id)}"]`).forEach(el => { el.hidden = false; el.textContent = parts.map(p => p.t).join(" "); }); } };
+  // Satz für Satz sprechen: klingt natürlicher und bricht bei langen Texten nicht ab
+  const queue = parts.flatMap(p => (p.l === "en-US" ? sentences(p.t) : [p.t]).map(t => ({ t, l: p.l })));
+  queue.forEach((p, i) => {
+    const u = new SpeechSynthesisUtterance(p.t); u.lang = p.l; const v = voiceFor(p.l); if(v) u.voice = v;
+    u.rate = p.l === "de-DE" ? 0.98 : 0.95; u.pitch = 1;
+    if(i === queue.length - 1) u.onend = u.onerror = () => { if(speakingId === c.id){ speakingId = null; rerender(c); show(); } };
     speechSynthesis.speak(u);
   });
 }
