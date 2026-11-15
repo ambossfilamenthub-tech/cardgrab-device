@@ -20,7 +20,7 @@ OP_KW = {
     "Opponent's Turn": "Gegnerischer Zug", "On K.O.": "Bei K.O.", "On Block": "Beim Blocken",
     "End of Your Turn": "Ende deines Zuges", "On Your Opponent's Attack": "Beim gegnerischen Angriff",
     "Counter": "Konter", "Trigger": "Trigger", "Blocker": "Blocker", "Rush": "Eile",
-    "Double Attack": "Doppelangriff", "Banish": "Verbannen", "Rush: Character": "Eile: Charakter",
+    "Double Attack": "Doppelangriff", "Unblockable": "Unblockbar", "Banish": "Verbannen", "Rush: Character": "Eile: Charakter",
 }
 def kw(k):
     k = k.strip()
@@ -88,15 +88,41 @@ def translate_all(texts):
     for t in todo:
         cache[t] = " ".join(out.get(s, s) for s in SENT.split(t) if s.strip())
 
+IMP = {"Geben": "Gib", "Nehmen": "Nimm", "Sehen": "Sieh", "Werfen": "Wirf", "Helfen": "Hilf", "Treffen": "Triff",
+       "Vergessen": "Vergiss", "Lesen": "Lies", "Seien": "Sei", "Haben": "Hab", "Werden": "Werde"}
+def du_form(t):
+    # Übersetzer siezt oft → Kartensprache duzt
+    t = t.replace("DON!!", "DON§")
+    t = re.sub(r"\b([A-ZÄÖÜ][a-zäöüß]+)en Sie sich\b", lambda m: m.group(1) + "e dir", t)
+    t = re.sub(r"\b([A-ZÄÖÜ][a-zäöüß]+)en Sie\b", lambda m: IMP.get(m.group(1) + "en", m.group(1) + "e"), t)
+    t = re.sub(r"\b([a-zäöüß]+)en Sie\b(?! sich)", lambda m: IMP.get(m.group(1).capitalize() + "en", m.group(1) + "e").lower() if m.group(1) not in ("können", "dürfen", "müssen") else m.group(0), t)
+    rep = [(r"\bSie können\b", "du kannst"), (r"\bkönnen Sie\b", "kannst du"), (r"\bSie dürfen\b", "du darfst"), (r"\bdürfen Sie\b", "darfst du"),
+           (r"\bSie müssen\b", "du musst"), (r"\bmüssen Sie\b", "musst du"), (r"\bSie haben\b", "du hast"), (r"\bhaben Sie\b", "hast du"),
+           (r"\bSie sind\b", "du bist"), (r"\bIhnen\b", "dir"), (r"\bIhrem\b", "deinem"), (r"\bIhren\b", "deinen"), (r"\bIhrer\b", "deiner"),
+           (r"\bIhres\b", "deines"), (r"\bIhre\b", "deine"), (r"\bIhr\b", "dein"), (r"\bSie sich\b", "dich"), (r"\bsich selbst\b", "dich selbst")]
+    for a, b in rep: t = re.sub(a, b, t)
+    t = re.sub(r"(^|[.!?:]\s+)([a-zäöü])", lambda m: m.group(1) + m.group(2).upper(), t)
+    return t.replace("DON§", "DON!!")
+
 def fix_de(t):
     # kleine Korrekturen typischer Übersetzungsfehler
-    return (t.replace("Pokemon", "Pokémon").replace("Pokémons", "Pokémon")
-             .replace("KO'd", "K.O.").replace("Knocked Out", "kampfunfähig"))
+    t = du_form(t)
+    for a, b in [("Pokemon", "Pokémon"), ("Pokémons", "Pokémon"), ("KO'd", "K.O."), ("Knocked Out", "kampfunfähig"),
+                 ("am Boden deines Decks", "unter dein Deck"), ("auf den Boden deines Decks", "unter dein Deck"), ("am Boden des Decks", "unter das Deck"),
+                 ("von der Oberseite deines Decks", "oben von deinem Deck"), ("ausgeruhte", "ruhende"), ("ausgeruht", "ruhend"),
+                 ("DON!! Karte", "DON!!-Karte")]:
+        t = t.replace(a, b)
+    return t
 
 # ---------- One Piece: Text in Schlüsselwörter und Fließtext zerlegen ----------
 def op_pieces(t):
     t = t.replace("DON!!", "DON‼")  # schützen
-    return [p for p in re.split(r"(\[[^\]]+\])", t) if p]
+    # [Name] einer Karte bleibt im Satz (in Anführungszeichen), damit der Satz am Stück übersetzt wird
+    t = re.sub(r"\[([^\]]+)\]", lambda m: m.group(0) if (m.group(1).strip() in OP_KW or re.match(r"DON‼\s*[x×]", m.group(1)) or ":" in m.group(1)) else '"' + m.group(1) + '"', t)
+    return [p for p in re.split(r"(\[[^\]]+\]|DON‼\s*[−-]\s*\d+|[➀-➉①-⑩])", t) if p]
+
+def is_lit(p):
+    return p.startswith("[") or re.match(r"^(DON‼\s*[−-]\s*\d+|[➀-➉①-⑩])$", p)
 
 def op_plain(p):
     return p.replace("DON‼", "DON!!").strip(" :")
@@ -119,7 +145,7 @@ for v in opdb.values():
     for t in (v[8], v[9]):
         if not t: continue
         for p in op_pieces(t):
-            if not p.startswith("["):
+            if not is_lit(p):
                 q = op_plain(p)
                 if re.search(r"[A-Za-z]{2}", q): need.add(q)
 
@@ -147,11 +173,13 @@ def op_de(t):
     out = []
     for p in op_pieces(t):
         if p.startswith("["):
-            out.append("[" + kw(p[1:-1].replace("DON‼", "DON!!")) + "]")
+            out.append(("" if not out or out[-1].endswith(("]", " ")) else " ") + "[" + kw(p[1:-1].replace("DON‼", "DON!!")) + "]")
+        elif is_lit(p):
+            out.append(" " + p.replace("DON‼", "DON!!"))
         else:
             q = op_plain(p)
             if not q: continue
-            lead = ": " if p.lstrip().startswith(":") else " "
+            lead = ": " if p.lstrip().startswith(":") else (" " if not p[:1].isspace() and out and out[-1].endswith("]") else " ")
             out.append(lead + fix_de(cache.get(q, q)) if re.search(r"[A-Za-z]{2}", q) else lead + q)
     return re.sub(r"\s+", " ", "".join(out)).replace("] :", "]:").strip()
 
