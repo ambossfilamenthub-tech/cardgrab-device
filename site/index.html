@@ -63,7 +63,10 @@
   .card.latest::after{content:"Neu gescannt";position:absolute;top:-9px;left:14px;font:800 10px system-ui,sans-serif;letter-spacing:.6px;text-transform:uppercase;background:var(--accent);color:#04131a;padding:3px 8px;border-radius:999px}
   .card.old{padding:10px 12px;opacity:.85}
   .card.old .thumb{width:40px;height:56px}
-  .card.old .prices,.card.old .vers,.card.old .links .alt,.card.old .links button,.card.old .links div,.card.old .note{display:none}
+  .speak{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12.5px;color:var(--muted)}
+  .facts{margin-top:8px;padding:10px 12px;border-radius:12px;background:rgba(10,9,22,.6);border:1px solid var(--line);font-size:13px;line-height:1.55}
+  .facts[hidden]{display:none}
+  .card.old .speak,.card.old .facts,.card.old .prices,.card.old .vers,.card.old .links .alt,.card.old .links button,.card.old .links div,.card.old .note{display:none}
   .card.old .links a.cm{font-size:12.5px;padding:8px}
   .rowc{display:flex;gap:12px;align-items:flex-start}
   .thumb{width:58px;height:81px;object-fit:cover;border-radius:8px;flex-shrink:0;background:#111;box-shadow:0 0 0 1px rgba(255,255,255,.08)}
@@ -174,7 +177,7 @@
 
   <section id="coll" hidden>
     <div class="stats">
-      <div class="stat"><div class="l">Sammlungswert (Trend)</div><div class="v" id="collVal">0 €</div></div>
+      <div class="stat"><div class="l">Sammlungswert (ab-Preis)</div><div class="v" id="collVal">0 €</div></div>
       <div class="stat gray"><div class="l">Karten</div><div class="v" id="collCnt">0</div></div>
     </div>
     <div class="tools">
@@ -188,7 +191,7 @@
     <div id="collList"></div>
   </section>
 
-  <div class="hint"><b>So funktioniert's:</b> Die Erkennung läuft komplett auf deinem Handy: Die Kamera liest Set-Kürzel und Nummer und sucht die Karte in der eingebauten Datenbank (alle Pokémon-Sets EN/DE, One Piece EN/JP). Die Preise stammen aus der offiziellen Cardmarket-Preisliste, die jeden Morgen neu geladen wird: <b>Trend</b>, <b>ab</b> (günstigstes Angebot insgesamt) und <b>30-Tage-Ø</b>. Für den günstigsten Near-Mint-Preis von Verkäufern aus Deutschland in deiner Sprache tippe auf den Cardmarket-Button. Deine Sammlung bleibt nur auf diesem Gerät – nutze „Sicherung speichern“ als Backup.</div>
+  <div class="hint"><b>So funktioniert's:</b> Die Erkennung läuft komplett auf deinem Handy: Die Kamera liest Set-Kürzel und Nummer und sucht die Karte in der eingebauten Datenbank (alle Pokémon-Sets EN/DE, One Piece EN/JP). Die Preise stammen aus der offiziellen Cardmarket-Preisliste, die jeden Morgen neu geladen wird. Als Wert zählt der <b>ab-Preis</b> (günstigstes Angebot), dazu Trend und 30-Tage-Ø. Der Cardmarket-Button öffnet die Karte gefiltert auf <b>Verkäufer aus Deutschland, Near Mint und die Sprache deiner Karte</b>. Deine Sammlung bleibt nur auf diesem Gerät – nutze „Sicherung speichern“ als Backup.</div>
   <div class="upd">
     <button class="btn secondary" id="updBtn">🔄 Nach Updates suchen</button>
     <small id="verTxt">Version wird geprüft …</small>

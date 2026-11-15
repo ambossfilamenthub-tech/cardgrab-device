@@ -31,7 +31,7 @@ const pricesReady = Promise.all([
 function attachPrice(c){
   if(c.op){
     const vs = (OPP && OPP.c && OPP.c[c.op.id]) || [];
-    c.versions = vs.map(v => ({ id: v[0], low: v[1], trend: v[2], avg7: v[3], avg30: v[4], guess: !!v[5] }));
+    c.versions = vs.map(v => ({ id: v[0], low: v[1], trend: v[2], avg7: v[3], avg30: v[4], guess: !!v[5], pack: v[6] || "" }));
     const i = Math.min(c.vi || 0, Math.max(0, c.versions.length - 1));
     const v = c.versions[i];
     c.price = v ? { low: v.low, trend: v.trend, avg7: v.avg7, avg30: v.avg30, id: v.id } : null;
@@ -41,7 +41,8 @@ function attachPrice(c){
   } else c.price = null;
   return c;
 }
-const valueOf = c => { const p = c.price; if(!p) return 0; if(c.rh && p.trendH) return p.trendH; return p.trend || p.avg30 || p.low || 0; };
+// Wert = "ab"-Preis (günstigstes Angebot); nur wenn keiner da ist: Trend
+const valueOf = c => { const p = c.price; if(!p) return 0; if(c.rh && (p.lowH || p.trendH)) return p.lowH || p.trendH; return p.low || p.trend || p.avg30 || 0; };
 
 // ---------------- Sammlung (IndexedDB, nur auf diesem Gerät) ----------------
 let coll = [];
@@ -105,7 +106,7 @@ function cardHTML(c, mode){
   const holo = p && (p.trendH || p.lowH);
   const v = valueOf(c);
   const vers = c.op && c.versions && c.versions.length > 1
-    ? `<div class="vers">${c.versions.map((x, i) => `<button data-ver="${esc(c.id)}" data-i="${i}" class="${i === (c.vi || 0) ? "on" : ""}">V${i + 1} · ${eur(x.trend || x.low)}</button>`).join("")}</div>
+    ? `<div class="vers">${c.versions.map((x, i) => `<button data-ver="${esc(c.id)}" data-i="${i}" class="${i === (c.vi || 0) ? "on" : ""}">V${i + 1}${x.pack && x.pack !== (c.op && c.op.id.split("-")[0]) ? " " + esc(x.pack) : ""} · ${eur(x.low || x.trend)}</button>`).join("")}</div>
        <div class="note">Diese Karte gibt es ${c.versions.length}× (normal, Parallel/Alt Art, Reprints). Wähle die Version mit deinem Motiv – V1 ist meist die normale Karte.${c.versions.some(x => x.guess) ? " Zuordnung der Versionen geschätzt – im Zweifel auf Cardmarket prüfen." : ""}</div>` : "";
   const rh = holo ? `<div class="vers"><button data-rh="${esc(c.id)}" data-v="0" class="${!c.rh ? "on" : ""}">Normal</button><button data-rh="${esc(c.id)}" data-v="1" class="${c.rh ? "on" : ""}">Reverse Holo</button></div>` : "";
   const pr = p ? `<div class="prices">
@@ -120,13 +121,16 @@ function cardHTML(c, mode){
         <h3>${esc(c.name || c.name_en || "Unbekannt")}${c.name_jp && c.name_jp !== c.name ? ` <span style="font-weight:400;color:var(--muted);font-size:13px">${esc(c.name_jp)}</span>` : ""}</h3>
         <div class="meta"><b>${esc(code)}</b>${c.set ? " · " + esc(c.set) : ""}${c.language ? " · " + esc(c.language) : ""}</div>
       </div>
-      <div class="val"><div class="l">Trend</div><div class="p">${eur(v)}</div></div>
+      <div class="val"><div class="l">ab</div><div class="p">${eur(v)}</div></div>
     </div>
     ${pr}${rh}${vers}
+    <div class="speak"><button class="btn secondary small" data-say="${esc(c.id)}">${speakingId === c.id ? "⏹️ Stopp" : "🔊 Vorlesen"}</button><span>${c.op ? "Kosten, Stärke, Konter & Effekt" : "KP, Attacken & Schaden"}</span></div>
+    <div class="facts" data-facts="${esc(c.id)}" hidden></div>
     ${links(c)}
   </div>`;
 }
 document.addEventListener("click", e => {
+  const sb = e.target.closest("[data-say]"); if(sb){ const c = coll.find(x => x.id === sb.dataset.say); if(c) speakCard(c); return; }
   const d = e.target.closest("[data-del]"); if(d){ removeCard(d.dataset.del); return; }
   const vb = e.target.closest("[data-ver]");
   if(vb){ const c = coll.find(x => x.id === vb.dataset.ver); if(c){ c.vi = +vb.dataset.i; attachPrice(c); saveCard(c); rerender(c); refreshTotals(); } return; }
@@ -139,6 +143,72 @@ function rerender(c){
     const t = document.createElement("div"); t.innerHTML = cardHTML(c, keep.join(" ")); el.replaceWith(t.firstElementChild);
   });
 }
+
+// ---------------- Vorlesen (Sprachausgabe des Handys, offline) ----------------
+let speakingId = null;
+const FACTS = new Map();
+const TYPE_DE = { Grass: "Pflanze", Fire: "Feuer", Water: "Wasser", Lightning: "Elektro", Psychic: "Psycho", Fighting: "Kampf", Darkness: "Finsternis", Metal: "Metall", Fairy: "Fee", Dragon: "Drache", Colorless: "Farblos" };
+const STAGE_DE = { Basic: "Basis-Pokémon", Stage1: "Phase 1", Stage2: "Phase 2", BREAK: "TURBO", MEGA: "Mega", VMAX: "VMAX", VSTAR: "VSTAR", "LEVEL-UP": "Level-Up", Restored: "Wiederbelebt" };
+const SYM = { G: "Pflanzen", R: "Feuer", W: "Wasser", L: "Elektro", P: "Psycho", F: "Kampf", D: "Finsternis", M: "Metall", Y: "Feen", N: "Drachen", C: "Farblos" };
+const sayClean = t => String(t || "").replace(/\{([A-Z])\}(\s*-?\s*Energie)?/g, (m, k) => " " + (SYM[k] || k) + "-Energie ").replace(/\s+/g, " ").trim();
+const dmgText = d => { const s = String(d ?? "").trim(); if(!s) return ""; return s.replace(/\+$/, " plus").replace(/[×x]$/, " mal").replace(/-$/, " minus") + " Schaden"; };
+async function factsFor(sid){
+  if(FACTS.has(sid)) return FACTS.get(sid);
+  const p = fetch(`facts/${encodeURIComponent(sid)}.json`).then(r => r.ok ? r.json() : null).catch(() => null);
+  FACTS.set(sid, p); return p;
+}
+// Sprech-Abschnitte: [{t: Text, l: "de-DE" | "en-US"}]
+async function speechParts(c){
+  if(c.op){
+    const o = c.op, de = [];
+    de.push(`${c.name}. ${o.cat === "Leader" ? "Leader" : o.cat === "Character" ? "Charakter" : o.cat || ""}${o.color ? ", Farbe " + o.color.replace(/Red/g, "Rot").replace(/Green/g, "Grün").replace(/Blue/g, "Blau").replace(/Purple/g, "Lila").replace(/Black/g, "Schwarz").replace(/Yellow/g, "Gelb").replace("/", " und ") : ""}.`);
+    if(o.cost != null) de.push(o.cat === "Leader" ? `${o.cost} Leben.` : `Kosten ${o.cost}.`);
+    if(o.power) de.push(`Stärke ${o.power}.`);
+    if(o.counter) de.push(`Konter plus ${o.counter}.`);
+    const parts = [{ t: de.join(" "), l: "de-DE" }];
+    if(o.effect) parts.push({ t: "Effekt:", l: "de-DE" }, { t: o.effect.replace(/\[|\]/g, ""), l: "en-US" });
+    if(o.trigger) parts.push({ t: "Trigger:", l: "de-DE" }, { t: o.trigger.replace(/\[|\]/g, ""), l: "en-US" });
+    return parts;
+  }
+  if(!c.db || !c.db.sid) return null;
+  const all = await factsFor(c.db.sid); const e = all && (all[c.db.lid] || all[String(c.db.lid).replace(/^0+/, "")]);
+  if(!e) return null;
+  const out = [`${c.name}.`];
+  if(e.c && e.c !== "Pokemon"){
+    out.push(e.c === "Trainer" ? `Trainerkarte${e.tt ? " (" + ({ Item: "Item", Supporter: "Unterstützer", Stadium: "Stadion", Tool: "Ausrüstung" }[e.tt] || e.tt) + ")" : ""}.` : "Energiekarte.");
+    if(e.e) out.push(sayClean(e.e));
+  } else {
+    if(e.hp) out.push(`${e.hp} KP.`);
+    if(e.t) out.push(`Typ ${e.t.map(t => TYPE_DE[t] || t).join(" und ")}.`);
+    if(e.st) out.push(`${STAGE_DE[e.st] || e.st}.`);
+    for(const [n, eff] of e.ab || []) out.push(`Fähigkeit ${n}: ${sayClean(eff)}`);
+    for(const [n, d, eff] of e.a || []) out.push(`Attacke ${n}${d !== "" ? ", " + dmgText(d) : ""}.${eff ? " " + sayClean(eff) : ""}`);
+    if(e.w) out.push(`Schwäche ${e.w.map(t => TYPE_DE[t] || t).join(" und ")}.`);
+    if(e.r !== undefined) out.push(`Rückzug ${e.r}.`);
+  }
+  return [{ t: out.join(" "), l: "de-DE" }];
+}
+function voiceFor(lang){
+  const vs = speechSynthesis.getVoices(); const p = lang.slice(0, 2);
+  return vs.find(v => v.lang === lang) || vs.find(v => v.lang && v.lang.toLowerCase().startsWith(p)) || null;
+}
+function stopSpeaking(){ try{ speechSynthesis.cancel(); }catch{} const id = speakingId; speakingId = null; const c = coll.find(x => x.id === id); if(c) rerender(c); }
+async function speakCard(c){
+  if(!("speechSynthesis" in window)){ toast("Dein Browser kann nicht vorlesen"); return; }
+  if(speakingId === c.id){ stopSpeaking(); return; }
+  if(speakingId) stopSpeaking();
+  const parts = await speechParts(c);
+  if(!parts){ toast("Für diese Karte gibt es keine Vorlese-Daten"); return; }
+  speakingId = c.id; rerender(c);
+  document.querySelectorAll(`[data-facts="${CSS.escape(c.id)}"]`).forEach(el => { el.hidden = false; el.textContent = parts.map(p => p.t).join(" "); });
+  speechSynthesis.cancel();
+  parts.forEach((p, i) => {
+    const u = new SpeechSynthesisUtterance(p.t); u.lang = p.l; const v = voiceFor(p.l); if(v) u.voice = v; u.rate = 1;
+    if(i === parts.length - 1) u.onend = u.onerror = () => { if(speakingId === c.id){ speakingId = null; rerender(c); document.querySelectorAll(`[data-facts="${CSS.escape(c.id)}"]`).forEach(el => { el.hidden = false; el.textContent = parts.map(p => p.t).join(" "); }); } };
+    speechSynthesis.speak(u);
+  });
+}
+if("speechSynthesis" in window){ speechSynthesis.getVoices(); speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices(); }
 
 // ---------------- Lesen: Kürzel + Nummer aus dem Text ----------------
 let LANG = "Deutsch";
