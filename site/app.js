@@ -487,7 +487,7 @@ async function startCam(nextCam){
     }catch{}
   };
   if(caps.torch){ const b = $("torchBtn"); b.hidden = false; b.onclick = async () => { const on = !b.classList.contains("on"); try{ await track.applyConstraints({ advanced: [{ torch: on }] }); b.classList.toggle("on", on); }catch{} }; }
-  setStatus("Handy ca. <b>15–20 cm</b> über die Karte halten und mit dem Zoom-Regler heranholen – so bleibt das Bild scharf. Unscharf? Ins Bild tippen oder 🔄 Kamera wechseln.");
+  setStatus("<b>Auto-Foto:</b> Karte in den Rahmen legen und Handy ruhig halten (ca. 15–20 cm, Zoom-Regler nutzen). Sobald sie scharf ist, macht die App das Foto selbst. Danach einfach die nächste Karte hinlegen.");
   await Promise.all([ocrReady, cardDbReady, opDbReady]);
   if(!loop.running){ loop.running = true; loop().finally(() => loop.running = false); }
 }
@@ -496,39 +496,65 @@ $("camBtn").onclick = e => { e.stopPropagation(); startCam(true); };
 $("barScan").onclick = () => $("photoInput").click();
 document.addEventListener("visibilitychange", () => { if(document.hidden && stream){ stream.getTracks().forEach(t => t.stop()); stream = null; $("camCover").hidden = false; } });
 
+// Auto-Foto: Schärfe (Laplace-Varianz) + Ruhe im Kartenrahmen messen -> automatisch auslösen
+let armed = true, peak = 0, steady = 0, lastShotSharp = 0, lastShotAt = 0;
 async function loop(){
   const v = $("video");
+  const SW = 96, SH = 134, sc = document.createElement("canvas"); sc.width = SW; sc.height = SH;
+  const sg = sc.getContext("2d", { willReadFrequently: true });
+  let prev = null;
   while(stream){
-    if(paused || busy || !v.videoWidth || $("scan").hidden){ await sleep(250); continue; }
-    busy = true;
+    if(paused || busy || !v.videoWidth || $("scan").hidden){ await sleep(200); prev = null; steady = 0; continue; }
     try{
-      // Rahmen -> Videopixel (object-fit: cover)
       const f = frameRect(), vw = v.videoWidth, vh = v.videoHeight;
       const s = Math.max(f.cw / vw, f.ch / vh), ox = (vw * s - f.cw) / 2, oy = (vh * s - f.ch) / 2;
       const X = (f.x + ox) / s, Y = (f.y + oy) / s, Wd = f.w / s, Hd = f.h / s;
-      const grab = document.createElement("canvas"); grab.width = vw; grab.height = vh; grab.getContext("2d").drawImage(v, 0, 0);
-      // unterer Kartenstreifen (Pokémon: links, One Piece: rechts) – ganze Breite, leicht über den Rand
-      // etwas über den Rahmen hinaus lesen – Karten werden oft größer/kleiner gehalten als der Rahmen
-      const sy = Y + Hd * 0.8, sh = Hd * 0.34;
-      const { r, text } = await ocrRegion(grab, Math.max(0, X - Wd * 0.03), Math.max(0, sy), Math.min(vw, Wd * 1.06), Math.min(vh - sy, sh));
-      $("readOut").textContent = text ? text.slice(0, 60) : "–";
-      if(r){
-        recent.push(r.key); if(recent.length > 4) recent.shift();
-        const stable = recent.filter(k => k === r.key).length >= 2;
-        const fresh = r.key !== lastKey || Date.now() - lastAt > 6000;
-        if(stable && fresh){
-          $("frame").classList.add("hit");
-          const thumb = cardThumb(grab, X, Y, Wd, Hd);
-          const ok = await handleRead(r, thumb);
-          if(ok){ lastKey = r.key; lastAt = Date.now(); recent.length = 0; setStatus("✓ Übernommen – nächste Karte in den Rahmen halten."); }
-          setTimeout(() => $("frame").classList.remove("hit"), 700);
-          await sleep(900);
-        }
+      sg.drawImage(v, X, Y, Wd, Hd, 0, 0, SW, SH);
+      const d = sg.getImageData(0, 0, SW, SH).data, g = new Float32Array(SW * SH);
+      let sum = 0;
+      for(let i = 0, j = 0; i < d.length; i += 4, j++){ g[j] = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114; sum += g[j]; }
+      const mean = sum / g.length; let vs = 0; for(const x of g) vs += (x - mean) * (x - mean);
+      const contrast = Math.sqrt(vs / g.length);
+      // Schärfe: Varianz des Laplace-Filters
+      let ls = 0, ls2 = 0, n = 0;
+      for(let y = 1; y < SH - 1; y++) for(let x = 1; x < SW - 1; x++){
+        const i = y * SW + x, l = 4 * g[i] - g[i - 1] - g[i + 1] - g[i - SW] - g[i + SW];
+        ls += l; ls2 += l * l; n++;
+      }
+      const sharp = ls2 / n - (ls / n) * (ls / n);
+      // Bewegung: Unterschied zum letzten Bild
+      let motion = 99;
+      if(prev){ let m = 0; for(let i = 0; i < g.length; i++) m += Math.abs(g[i] - prev[i]); motion = m / g.length; }
+      prev = g;
+      peak = Math.max(sharp, peak * 0.97);
+      const present = contrast > 18;
+      if(!armed){
+        // nach einem Foto: erst wieder auslösen, wenn eine andere Karte im Rahmen liegt
+        if(Date.now() - lastShotAt > 1500 && (motion > 14 || !present || sharp < lastShotSharp * 0.45)){ armed = true; steady = 0; }
+        $("readOut").textContent = "✓ Foto gemacht – nächste Karte in den Rahmen";
+      } else {
+        const good = present && motion < 5 && sharp > 25 && sharp >= peak * 0.8;
+        steady = good ? steady + 1 : 0;
+        $("frame").classList.toggle("focus", steady > 0);
+        $("readOut").textContent = !present ? "Karte in den Rahmen halten" : motion >= 5 ? "Ruhig halten …" : sharp < 25 ? "Wird scharf gestellt …" : steady ? `Scharf ✓ – Foto in ${Math.max(0, 3 - steady)} …` : "Fokussiere …";
+        if(steady >= 3){ await autoShot(v, X, Y, Wd, Hd, sharp); prev = null; }
       }
     }catch(e){ console.warn(e); }
-    busy = false;
-    await sleep(120);
+    await sleep(110);
   }
+}
+async function autoShot(v, X, Y, Wd, Hd, sharp){
+  busy = true; armed = false; lastShotSharp = sharp; lastShotAt = Date.now(); steady = 0;
+  $("frame").classList.remove("focus"); $("frame").classList.add("hit");
+  const cam = $("cam"); cam.classList.add("flash"); setTimeout(() => cam.classList.remove("flash"), 350);
+  if(navigator.vibrate) navigator.vibrate(40);
+  // Kartenbereich mit etwas Rand in voller Videoauflösung ausschneiden
+  const mx = Wd * 0.12, my = Hd * 0.08;
+  const x0 = Math.max(0, X - mx), y0 = Math.max(0, Y - my), x1 = Math.min(v.videoWidth, X + Wd + mx), y1 = Math.min(v.videoHeight, Y + Hd + my);
+  const cv = document.createElement("canvas"); cv.width = Math.round(x1 - x0); cv.height = Math.round(y1 - y0);
+  cv.getContext("2d").drawImage(v, x0, y0, x1 - x0, y1 - y0, 0, 0, cv.width, cv.height);
+  setTimeout(() => $("frame").classList.remove("hit"), 600);
+  try{ await analyzePhoto(cv); } finally { busy = false; lastShotAt = Date.now(); }
 }
 function cardThumb(src, x, y, w, h){
   const c = document.createElement("canvas"); c.width = 120; c.height = Math.round(120 * 88 / 63);
@@ -568,7 +594,8 @@ function photoBox(thumb, text){
 async function analyzePhoto(file){
   showTab("scan");
   let bmp;
-  try{ bmp = await createImageBitmap(file, { imageOrientation: "from-image" }); }catch{ bmp = await createImageBitmap(file); }
+  if(file instanceof HTMLCanvasElement) bmp = file;
+  else { try{ bmp = await createImageBitmap(file, { imageOrientation: "from-image" }); }catch{ bmp = await createImageBitmap(file); } }
   // auf max. 2000 px (lange Seite) verkleinern – reicht für die kleine Schrift und bleibt schnell
   const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
   const cv = document.createElement("canvas"); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);

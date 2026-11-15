@@ -30,6 +30,9 @@
   .cam video,.cam canvas.still{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
   .frame{position:absolute;border-radius:14px;box-shadow:0 0 0 9999px rgba(5,4,13,.55);border:2px solid rgba(255,255,255,.75);transition:border-color .2s}
   .frame.hit{border-color:var(--good);box-shadow:0 0 0 9999px rgba(5,4,13,.55),0 0 28px rgba(61,220,151,.6)}
+  .frame.focus{border-color:#ffd54a;box-shadow:0 0 0 9999px rgba(5,4,13,.55),0 0 22px rgba(255,213,74,.5)}
+  .cam.flash::after{content:"";position:absolute;inset:0;background:#fff;opacity:.85;animation:fl .35s ease-out forwards;pointer-events:none}
+  @keyframes fl{to{opacity:0}}
   .frame .strip{position:absolute;left:-2px;right:-2px;bottom:-2px;height:15%;border:2px dashed var(--accent);border-radius:0 0 14px 14px;background:rgba(34,211,238,.06)}
   .frame .strip span{position:absolute;top:-22px;left:50%;transform:translateX(-50%);font:700 11px system-ui,sans-serif;color:var(--accent);white-space:nowrap;text-shadow:0 1px 4px #000}
   .camstate{position:absolute;left:10px;right:10px;top:10px;display:flex;gap:8px;align-items:flex-start;justify-content:space-between}
@@ -139,7 +142,7 @@
   <section id="scan">
     <div class="cam" id="cam">
       <video id="video" playsinline muted></video>
-      <div class="frame" id="frame"><div class="strip"><span>Kürzel + Nummer hier</span></div></div>
+      <div class="frame" id="frame"><div class="strip"><span>Karte hier hinein</span></div></div>
       <div class="camstate">
         <div class="read" id="readOut">–</div>
         <div style="display:flex;gap:6px"><button class="iconbtn" id="camBtn" hidden>🔄</button><button class="iconbtn" id="torchBtn" hidden>🔦</button></div>
@@ -151,7 +154,7 @@
         <label class="btn primary big" for="photoInput">📸 Foto machen</label>
         <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
           <label class="btn secondary small" for="galleryInput">🖼️ Aus Galerie</label>
-          <button class="btn secondary small" id="startBtn">🎥 Live-Scan</button>
+          <button class="btn secondary small" id="startBtn">🎥 Auto-Foto</button>
         </div>
         <p id="ocrState" style="font-size:12px">Texterkennung wird geladen …</p>
       </div>
