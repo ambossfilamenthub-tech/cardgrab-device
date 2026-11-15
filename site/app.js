@@ -128,7 +128,7 @@ function cardHTML(c, mode){
       <input type="text" inputmode="decimal" data-real="${esc(c.id)}" value="${c.real > 0 ? String(c.real).replace(".", ",") : ""}" placeholder="z. B. 0,12">
       <span class="eur">€</span><button class="btn secondary small" data-realok="${esc(c.id)}">${c.real > 0 ? "Ändern" : "Übernehmen"}</button>
       ${c.real > 0 ? `<small>✓ gilt als Wert · eingetragen ${new Date(c.realAt || Date.now()).toLocaleDateString("de-DE")}</small>` : ""}</div>
-    <div class="speak"><button class="btn secondary small" data-say="${esc(c.id)}">${speakingId === c.id ? "⏹️ Stopp" : "🔊 Vorlesen"}</button><span>${c.op ? "Kosten, Stärke, Konter & Effekt" : "KP, Attacken & Schaden"}</span></div>
+    <div class="speak"><button class="btn secondary small" data-say="${esc(c.id)}">${speakingId === c.id ? "⏹️ Stopp" : "🔊 Vorlesen"}</button><button class="btn secondary small" data-view="${esc(c.id)}">📄 Kartentext</button></div>
     <div class="facts" data-facts="${esc(c.id)}" hidden></div>
     ${links(c)}
   </div>`;
@@ -153,6 +153,8 @@ document.addEventListener("click", e => {
     return;
   }
   const ro = e.target.closest("[data-realok]"); if(ro){ setReal(ro.dataset.realok); return; }
+  const kv = e.target.closest("[data-view]");
+  if(kv){ const c = coll.find(x => x.id === kv.dataset.view); const box = document.querySelector(`[data-facts="${CSS.escape(kv.dataset.view)}"]`); if(c && box){ if(!box.hidden && box.innerHTML){ box.hidden = true; } else showCardView(c, false); } return; }
   const sb = e.target.closest("[data-say]"); if(sb){ const c = coll.find(x => x.id === sb.dataset.say); if(c) speakCard(c); return; }
   const d = e.target.closest("[data-del]"); if(d){ removeCard(d.dataset.del); return; }
   const vb = e.target.closest("[data-ver]");
@@ -180,6 +182,51 @@ async function factsFor(sid){
   const p = fetch(`facts/${encodeURIComponent(sid)}.json`).then(r => r.ok ? r.json() : null).catch(() => null);
   FACTS.set(sid, p); return p;
 }
+// ---------- Kartentext im Aufbau der echten Karte ----------
+const EN_ICON = { Grass: ["#3fae49", "🌿"], Fire: ["#e8462e", "🔥"], Water: ["#2f8fd8", "💧"], Lightning: ["#f2c318", "⚡"], Psychic: ["#9b4fb8", "👁"], Fighting: ["#b5652b", "✊"], Darkness: ["#2f3a45", "🌙"], Metal: ["#8a97a3", "⚙"], Fairy: ["#e584b6", "✨"], Dragon: ["#b49b37", "🐉"], Colorless: ["#e9e6dc", "★"] };
+const enIcon = t => { const [bg, ch] = EN_ICON[t] || ["#777", "?"]; return `<i class="en" style="background:${bg}" title="${esc(TYPE_DE[t] || t)}">${ch}</i>`; };
+const textIcons = t => esc(sayClean(t)).replace(/\b(Pflanzen|Feuer|Wasser|Elektro|Psycho|Kampf|Finsternis|Metall|Feen|Drachen|Farblos)-Energie\b/g, m => m);
+const opText = t => esc(t || "").replace(/\[([^\]]+)\]/g, (m, k) => `<span class="kw">${k}</span>`);
+async function cardViewHTML(c){
+  if(c.op){
+    const o = c.op;
+    const col = (o.color || "").split("/").map(x => ({ Red: "#d93b3b", Green: "#2f9e57", Blue: "#2f7fd8", Purple: "#8b4fc0", Black: "#333", Yellow: "#e2b829" }[x] || "#777"));
+    return `<div class="cv op" style="--c1:${col[0] || "#777"};--c2:${col[1] || col[0] || "#777"}">
+      <div class="cv-head"><span class="cv-cost" title="Kosten">${o.cost ?? ""}</span><b class="cv-name">${esc(c.name)}</b><span class="cv-pow">${o.power ? num(o.power) : ""}</span></div>
+      <div class="cv-sub">${esc({ Leader: "LEADER", Character: "CHARACTER", Event: "EVENT", Stage: "STAGE" }[o.cat] || o.cat || "")}${o.cat === "Leader" && o.cost != null ? " · " + o.cost + " Leben" : ""}${o.attr ? " · " + esc(o.attr) : ""}</div>
+      ${o.counter ? `<div class="cv-counter">Konter +${num(o.counter)}</div>` : ""}
+      ${o.effect ? `<div class="cv-eff">${opText(o.effect)}</div>` : ""}
+      ${o.trigger ? `<div class="cv-eff trig"><span class="kw">Trigger</span> ${opText(o.trigger)}</div>` : ""}
+      <div class="cv-foot"><span>${esc(o.types || "")}</span><span>${esc(o.id)}</span></div></div>`;
+  }
+  if(!c.db || !c.db.sid) return "";
+  const all = await factsFor(c.db.sid); const e = all && (all[c.db.lid] || all[String(c.db.lid).replace(/^0+/, "")]);
+  if(!e) return "";
+  if(e.c && e.c !== "Pokemon"){
+    const kind = e.c === "Trainer" ? ({ Item: "ITEM", Supporter: "UNTERSTÜTZER", Stadium: "STADION", Tool: "PKMN-AUSRÜSTUNG" }[e.tt] || "TRAINER") : "ENERGIE";
+    return `<div class="cv tr"><div class="cv-sub">${kind}</div><div class="cv-head"><b class="cv-name">${esc(c.name)}</b></div>
+      ${e.e ? `<div class="cv-eff">${esc(sayClean(e.e))}</div>` : ""}<div class="cv-foot"><span></span><span>${esc(cmCode(c))}</span></div></div>`;
+  }
+  const stage = { Basic: "BASIS", Stage1: "PHASE 1", Stage2: "PHASE 2", VMAX: "VMAX", VSTAR: "VSTAR", MEGA: "MEGA", BREAK: "TURBO" }[e.st] || (e.st || "").toUpperCase();
+  const t0 = (e.t || [])[0];
+  const atks = (e.a || []).map(([n, d, eff, cost]) => `<div class="cv-atk"><div class="cv-line"><span class="cv-costs">${(cost || []).map(enIcon).join("")}</span><b>${esc(n)}</b><span class="cv-dmg">${esc(String(d ?? ""))}</span></div>${eff ? `<div class="cv-txt">${esc(sayClean(eff))}</div>` : ""}</div>`).join("");
+  const abs = (e.ab || []).map(([n, eff]) => `<div class="cv-atk ab"><div class="cv-line"><span class="cv-abl">Fähigkeit</span><b>${esc(n)}</b></div><div class="cv-txt">${esc(sayClean(eff))}</div></div>`).join("");
+  const weak = (e.w || []).map((t, i) => enIcon(t) + esc((e.wv || [])[i] || "")).join(" ") || "–";
+  const res = (e.rs || []).map(([t, v]) => enIcon(t) + esc(v)).join(" ") || "–";
+  const ret = e.r ? Array.from({ length: e.r }, () => enIcon("Colorless")).join("") : "–";
+  const [bg] = EN_ICON[t0] || ["#888"];
+  return `<div class="cv pk" style="--tc:${bg}">
+    <div class="cv-sub">${stage}${e.ef ? ` · entwickelt sich aus ${esc(e.ef)}` : ""}</div>
+    <div class="cv-head"><b class="cv-name">${esc(c.name)}</b><span class="cv-hp"><small>KP</small>${e.hp || ""} ${(e.t || []).map(enIcon).join("")}</span></div>
+    ${abs}${atks}
+    <div class="cv-foot"><span>Schwäche ${weak}</span><span>Resistenz ${res}</span><span>Rückzug ${ret}</span></div></div>`;
+}
+async function showCardView(c, voices){
+  const html = await cardViewHTML(c);
+  document.querySelectorAll(`[data-facts="${CSS.escape(c.id)}"]`).forEach(el => { el.hidden = false; el.innerHTML = (html || `<div class="note">Für diese Karte gibt es keinen Kartentext.</div>`) + (voices ? voicePicker() : ""); });
+  return !!html;
+}
+
 // Sprech-Abschnitte: [{t: Text, l: "de-DE" | "en-US"}] – in natürlichen Sätzen
 const ORD = ["Erste", "Zweite", "Dritte", "Vierte"];
 const num = n => { const x = Number(n); return isFinite(x) ? x.toLocaleString("de-DE") : String(n); };
@@ -266,7 +313,7 @@ async function speakCard(c){
   const parts = await speechParts(c);
   if(!parts){ toast("Für diese Karte gibt es keine Vorlese-Daten"); return; }
   speakingId = c.id; rerender(c);
-  const show = () => document.querySelectorAll(`[data-facts="${CSS.escape(c.id)}"]`).forEach(el => { el.hidden = false; el.innerHTML = esc(parts.map(p => p.t).join(" ")) + voicePicker(); });
+  const show = () => showCardView(c, true);
   show();
   speechSynthesis.cancel();
   // Satz für Satz sprechen: klingt natürlicher und bricht bei langen Texten nicht ab
