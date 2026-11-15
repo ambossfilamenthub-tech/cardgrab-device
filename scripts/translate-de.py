@@ -127,7 +127,7 @@ def fix_de(t):
                  ("Blitzenergie", "Elektro-Energie"), ("Psychische Energie", "Psycho-Energie"), ("Kampfenergie", "Kampf-Energie"),
                  ("Dunkelenergie", "Finsternis-Energie"), ("Metallenergie", "Metall-Energie"), ("Farblose Energie", "Farblos-Energie"),
                  ("Schadenszählern", "Schadensmarken"), ("Bank Pokémon", "Bank-Pokémon"), ("Preiskarte nehmen", "Preiskarte ziehen"),
-                 ("Widerstand", "Resistenz"), ("nächsten Runde", "nächsten Zuges"), ("nächste Runde", "nächsten Zug"), ("Evolved Pokémon", "entwickeltes Pokémon"),
+                 ("Widerstand", "Resistenz"), ("der nächsten Runde", "des nächsten Zuges"), ("nächsten Runde", "nächsten Zuges"), ("nächste Runde", "nächsten Zug"), ("Evolved Pokémon", "entwickeltes Pokémon"),
                  ("Basic Pokémon", "Basis-Pokémon"), ("Bench", "Bank"), ("Defending Pokémon", "verteidigende Pokémon"),
                  ("drehe dich nach dieser Wende noch einmal um", "mache nach diesem Zug einen weiteren Zug")]:
         t = t.replace(a, b)
