@@ -40,6 +40,11 @@ jobs:
           git clone --depth 1 https://github.com/tcgdex/cards-database.git /tmp/tcgdex
           node scripts/build-facts.mjs /tmp/tcgdex/data site/facts
 
+      - name: Kartentexte ins Deutsche übersetzen (offline, mit Cache)
+        run: |
+          pip install -q ctranslate2 sentencepiece
+          python3 scripts/translate-de.py
+
       - name: Cardmarket-Preise laden
         run: node scripts/update-prices.mjs
 
@@ -47,7 +52,7 @@ jobs:
         run: |
           git config user.name "cardgrab-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add site/prices-*.json
+          git add site/prices-*.json data/tr-de.json
           git diff --cached --quiet || git commit -m "Preise $(date -u +%F)"
           git push || true
 
