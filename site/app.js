@@ -330,23 +330,82 @@ function frameRect(){
 }
 function placeFrame(){ const f = frameRect(), el = $("frame"); Object.assign(el.style, { left: f.x + "px", top: f.y + "px", width: f.w + "px", height: f.h + "px" }); }
 window.addEventListener("resize", placeFrame);
-async function startCam(){
+// Rückkameras: Hauptkamera bevorzugen (Android: "camera2 0, facing back"), Weitwinkel/Tele/Tiefe meiden
+let backCams = [], camIdx = -1;
+async function listBackCams(){
   try{
-    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+    let back = devs.filter(d => /back|rück|rear|environment|hinten/i.test(d.label));
+    if(!back.length) back = devs;
+    const bad = d => /ultra|wide|weitwinkel|tele|depth|tiefe|macro/i.test(d.label) ? 1 : 0;
+    const num = d => { const m = d.label.match(/camera2?\s*(\d+)/i); return m ? +m[1] : 99; };
+    backCams = back.sort((a, b) => bad(a) - bad(b) || num(a) - num(b));
+  }catch{ backCams = []; }
+}
+function savedCam(){ try{ return localStorage.getItem("cgd-cam") || ""; }catch{ return ""; } }
+async function openStream(deviceId){
+  const base = { width: { ideal: 2560 }, height: { ideal: 1440 }, frameRate: { ideal: 30 } };
+  const video = deviceId ? { ...base, deviceId: { exact: deviceId } } : { ...base, facingMode: { ideal: "environment" } };
+  return navigator.mediaDevices.getUserMedia({ audio: false, video });
+}
+async function startCam(nextCam){
+  if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; await sleep(150); }
+  try{
+    if(!backCams.length){
+      // erst einmal Zugriff holen, sonst liefert enumerateDevices keine Namen
+      const tmp = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
+      tmp.getTracks().forEach(t => t.stop());
+      await listBackCams();
+      const sv = savedCam(); camIdx = Math.max(0, backCams.findIndex(d => d.deviceId === sv));
+    } else if(nextCam) camIdx = (camIdx + 1) % backCams.length;
+    const dev = backCams[camIdx];
+    stream = await openStream(dev && dev.deviceId);
+    if(dev) try{ localStorage.setItem("cgd-cam", dev.deviceId); }catch{}
   }catch(e){
-    setStatus("Kamera nicht verfügbar oder nicht erlaubt. Erlaube den Kamerazugriff in den Browser-Einstellungen – oder nutze „🖼️ Foto“ bzw. die manuelle Eingabe.");
-    return;
+    try{ stream = await openStream(""); }catch{
+      setStatus("Kamera nicht verfügbar oder nicht erlaubt. Erlaube den Kamerazugriff in den Browser-Einstellungen – oder nutze „🖼️ Foto“ bzw. die manuelle Eingabe.");
+      return;
+    }
   }
   const v = $("video"); v.srcObject = stream; await v.play().catch(() => {});
   $("camCover").hidden = true; placeFrame();
   const track = stream.getVideoTracks()[0];
-  try{ await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); }catch{}
   const caps = track.getCapabilities ? track.getCapabilities() : {};
+  try{ if((caps.focusMode || []).includes("continuous")) await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); }catch{}
+  // Kamera wechseln
+  $("camBtn").hidden = backCams.length < 2;
+  $("camBtn").textContent = `🔄 ${camIdx + 1}/${backCams.length}`;
+  // Zoom: Handy weiter weg halten (Fokus!) und heranzoomen
+  const zr = $("zoom");
+  if(caps.zoom && caps.zoom.max > caps.zoom.min){
+    zr.min = caps.zoom.min; zr.max = Math.min(caps.zoom.max, 4); zr.step = caps.zoom.step || 0.1;
+    let z0 = 1.5; try{ z0 = +localStorage.getItem("cgd-zoom") || 1.5; }catch{}
+    zr.value = Math.min(+zr.max, Math.max(+zr.min, z0));
+    try{ await track.applyConstraints({ advanced: [{ zoom: +zr.value }] }); }catch{}
+    $("zoomWrap").hidden = false; $("zoomVal").textContent = (+zr.value).toFixed(1) + "×";
+    zr.oninput = async () => { $("zoomVal").textContent = (+zr.value).toFixed(1) + "×"; try{ await track.applyConstraints({ advanced: [{ zoom: +zr.value }] }); localStorage.setItem("cgd-zoom", zr.value); }catch{} };
+  } else $("zoomWrap").hidden = true;
+  // Tippen = neu scharfstellen
+  $("cam").onclick = async e => {
+    if(e.target.closest("button,input")) return;
+    try{
+      const r = $("cam").getBoundingClientRect();
+      const pt = { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+      const adv = {};
+      if((caps.focusMode || []).includes("single-shot")) adv.focusMode = "single-shot";
+      if(caps.pointsOfInterest !== undefined) adv.pointsOfInterest = [pt];
+      await track.applyConstraints({ advanced: [adv] });
+      if((caps.focusMode || []).includes("continuous")) setTimeout(() => track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }).catch(() => {}), 1500);
+      toast("🎯 Scharfstellen …");
+    }catch{}
+  };
   if(caps.torch){ const b = $("torchBtn"); b.hidden = false; b.onclick = async () => { const on = !b.classList.contains("on"); try{ await track.applyConstraints({ advanced: [{ torch: on }] }); b.classList.toggle("on", on); }catch{} }; }
-  setStatus("Karte in den Rahmen halten – <b>Kürzel und Nummer</b> unten in den gestrichelten Bereich.");
-  await Promise.all([ocrReady, cardDbReady, opDbReady]); loop();
+  setStatus("Handy ca. <b>15–20 cm</b> über die Karte halten und mit dem Zoom-Regler heranholen – so bleibt das Bild scharf. Unscharf? Ins Bild tippen oder 🔄 Kamera wechseln.");
+  await Promise.all([ocrReady, cardDbReady, opDbReady]);
+  if(!loop.running){ loop.running = true; loop().finally(() => loop.running = false); }
 }
-$("startBtn").onclick = startCam;
+$("startBtn").onclick = () => startCam();
+$("camBtn").onclick = e => { e.stopPropagation(); startCam(true); };
 $("barScan").onclick = () => { showTab("scan"); window.scrollTo({ top: 0, behavior: "smooth" }); if(!stream) startCam(); };
 document.addEventListener("visibilitychange", () => { if(document.hidden && stream){ stream.getTracks().forEach(t => t.stop()); stream = null; $("camCover").hidden = false; } });
 
