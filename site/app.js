@@ -726,14 +726,21 @@ const ocrReady = (async () => {
   }catch(e){ console.error(e); $("ocrState").textContent = "Texterkennung konnte nicht geladen werden – manuelle Eingabe nutzen."; return false; }
 })();
 // Bildausschnitt vorbereiten: Graustufen, Kontrast strecken, vergrößern
-function prepStrip(src, sx, sy, sw, sh, invert, maxW, adaptive){
+// chan: "min" = kleinster Farbkanal (weiße Schrift hebt sich von farbigem Grund ab),
+//       "max" = größter Farbkanal (dunkle Schrift auf farbigem Grund) – für Full-Art-/Vollbildkarten
+function prepStrip(src, sx, sy, sw, sh, invert, maxW, adaptive, chan){
   const scale = Math.min(3, (maxW || 1600) / sw);
   const cv = document.createElement("canvas"); cv.width = Math.round(sw * scale); cv.height = Math.round(sh * scale);
   const g = cv.getContext("2d", { willReadFrequently: true });
   g.imageSmoothingQuality = "high"; g.drawImage(src, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
   const im = g.getImageData(0, 0, cv.width, cv.height), d = im.data;
-  let mn = 255, mx = 0; const L = new Uint8Array(d.length / 4);
-  for(let i = 0, j = 0; i < d.length; i += 4, j++){ const v = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000; L[j] = v; if(v < mn) mn = v; if(v > mx) mx = v; }
+  let mn = 1e9, mx = -1e9; const L = chan ? new Float32Array(d.length / 4) : new Uint8Array(d.length / 4);
+  for(let i = 0, j = 0; i < d.length; i += 4, j++){
+    const r = d[i], gg = d[i + 1], b = d[i + 2], hi = Math.max(r, gg, b), lo = Math.min(r, gg, b);
+    // "white": hell UND ungesättigt (weiße/helle Schrift auf buntem Grund), "dark": dunkel UND ungesättigt
+    const v = chan === "white" ? lo - 1.5 * (hi - lo) : chan === "dark" ? hi + 1.5 * (hi - lo) : chan === "min" ? lo : chan === "max" ? hi : (r * 299 + gg * 587 + b * 114) / 1000;
+    L[j] = v; if(v < mn) mn = v; if(v > mx) mx = v; }
+  if(chan){ const k2 = 255 / Math.max(1, mx - mn); for(let j = 0; j < L.length; j++) L[j] = (L[j] - mn) * k2; mn = 0; mx = 255; }
   const k = 255 / Math.max(1, mx - mn);
   if(adaptive){
     // lokale Schwelle: nur feine Kontraste (Schrift) werden schwarz, große Flächen (Bild, Tisch) weiß
@@ -746,7 +753,8 @@ function prepStrip(src, sx, sy, sw, sh, invert, maxW, adaptive){
         const x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1);
         const sum = ii[y1 * W1 + x1] - ii[y0 * W1 + x1] - ii[y1 * W1 + x0] + ii[y0 * W1 + x0];
         const mean = sum / ((y1 - y0) * (x1 - x0)), v = L[y * w + x];
-        let o = invert ? (v > mean * 1.15 + 6 ? 0 : 255) : (v < mean * 0.85 - 6 ? 0 : 255);
+        let o = chan ? (invert ? (v > mean + 22 ? 0 : 255) : (v < mean - 22 ? 0 : 255))
+                     : invert ? (v > mean * 1.15 + 6 ? 0 : 255) : (v < mean * 0.85 - 6 ? 0 : 255);
         const i = (y * w + x) * 4; d[i] = d[i + 1] = d[i + 2] = o;
       }
     }
@@ -1009,8 +1017,8 @@ async function analyzePhoto(file, opts){
     return null;
   };
   // ein Ausschnitt mit fester Schriftfarbe (normal / hell auf dunkel)
-  const readArea = async (src, x, y, w, h, inv, maxW) => {
-    const text = await ocr(prepStrip(src, x, y, w, h, inv, maxW || 1700, true));
+  const readArea = async (src, x, y, w, h, inv, maxW, chan) => {
+    const text = await ocr(prepStrip(src, x, y, w, h, inv, maxW || 1700, true, chan));
     texts.push(text); $("readOut").textContent = text ? text.slice(0, 60) : "–";
     return keep(parseRead(text));
   };
@@ -1034,10 +1042,13 @@ async function analyzePhoto(file, opts){
       () => readArea(cv, 0, H * 0.78, W, H * 0.22, true, 1500),
       ...(YGO ? [() => readArea(cv, W * 0.3, H * 0.62, W * 0.7, H * 0.17, false, 1300)] : [])
     ]);
-    // 2) ganzes Foto (kleiner gerechnet = schneller), dunkle + helle Schrift gleichzeitig
+    // 2) ganzes Foto (kleiner gerechnet = schneller), dunkle + helle Schrift – dazu für Full-Art-/farbige Karten
+    //    der untere Rand mit getrennten Farbkanälen (weiße bzw. dunkle Schrift direkt auf dem Bild)
     if(!hit) hit = await race("Suche im ganzen Foto …", [
       () => readArea(cv, 0, 0, W, H, false, 1600),
-      () => readArea(cv, 0, 0, W, H, true, 1600)
+      () => readArea(cv, 0, 0, W, H, true, 1600),
+      () => readArea(cv, 0, H * 0.78, W, H * 0.22, true, 2100, "min"),
+      () => readArea(cv, 0, H * 0.78, W, H * 0.22, true, 2100, "white")
     ]);
     // 3) waagerechte Streifen – je 2 Lagen × 2 Schriftfarben parallel
     const bands = quick ? [0.66, 0.58, 0.86] : [0.66, 0.58, 0.5, 0.42, 0.34, 0.86];
