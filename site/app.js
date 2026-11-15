@@ -173,7 +173,7 @@ const FACTS = new Map();
 const TYPE_DE = { Grass: "Pflanze", Fire: "Feuer", Water: "Wasser", Lightning: "Elektro", Psychic: "Psycho", Fighting: "Kampf", Darkness: "Finsternis", Metal: "Metall", Fairy: "Fee", Dragon: "Drache", Colorless: "Farblos" };
 const STAGE_DE = { Basic: "Basis-Pokémon", Stage1: "Phase 1", Stage2: "Phase 2", BREAK: "TURBO", MEGA: "Mega", VMAX: "VMAX", VSTAR: "VSTAR", "LEVEL-UP": "Level-Up", Restored: "Wiederbelebt" };
 const SYM = { G: "Pflanzen", R: "Feuer", W: "Wasser", L: "Elektro", P: "Psycho", F: "Kampf", D: "Finsternis", M: "Metall", Y: "Feen", N: "Drachen", C: "Farblos" };
-const sayClean = t => String(t || "").replace(/\{([A-Z])\}(\s*-?\s*Energie)?/g, (m, k) => " " + (SYM[k] || k) + "-Energie ").replace(/\s+/g, " ").trim();
+const sayClean = t => String(t || "").replace(/\s*\(([^)]*)\)\s*/g, ", $1, ").replace(/,\s*([.,])/g, "$1").replace(/\{([A-Z])\}(\s*-?\s*Energie)?/g, (m, k) => " " + (SYM[k] || k) + "-Energie ").replace(/\s+/g, " ").trim();
 const dmgText = d => { const s = String(d ?? "").trim(); if(!s) return ""; return s.replace(/\+$/, " plus").replace(/[×x]$/, " mal").replace(/-$/, " minus") + " Schaden"; };
 async function factsFor(sid){
   if(FACTS.has(sid)) return FACTS.get(sid);
@@ -207,8 +207,8 @@ async function speechParts(c){
       if(bits.length) de(`Die Karte ${bits.join(" und ")}.`);
       if(o.counter) de(`Als Konter gibt sie plus ${num(o.counter)}.`);
     }
-    if(o.effect){ de("Der Effekt lautet:"); en(o.effect.replace(/\[|\]/g, "").replace(/DON!!/g, "DON").replace(/➀|①/g, "1").replace(/➁|②/g, "2")); }
-    if(o.trigger){ de("Trigger:"); en(o.trigger.replace(/\[|\]/g, "")); }
+    if(o.effect){ de("Der Effekt lautet so."); en(o.effect.replace(/\[|\]/g, "").replace(/DON!!/g, "DON").replace(/➀|①/g, "1").replace(/➁|②/g, "2")); }
+    if(o.trigger){ de("Und der Trigger."); en(o.trigger.replace(/\[|\]/g, "")); }
     return parts;
   }
   if(!c.db || !c.db.sid) return null;
@@ -217,17 +217,17 @@ async function speechParts(c){
   if(e.c && e.c !== "Pokemon"){
     const kind = e.c === "Trainer" ? ({ Item: "eine Item-Karte", Supporter: "eine Unterstützer-Karte", Stadium: "eine Stadion-Karte", Tool: "eine Ausrüstungs-Karte" }[e.tt] || "eine Trainerkarte") : "eine Energiekarte";
     de(`${c.name} ist ${kind}.`);
-    if(e.e) for(const t of sentences(sayClean(e.e))) de(t);
+    if(e.e) de(sayClean(e.e));
     return parts;
   }
   const typ = e.t ? e.t.map(t => TYPE_DE[t] || t).join(" und ") : "";
   const stage = { Basic: "ein Basis-Pokémon", Stage1: "ein Phase-1-Pokémon", Stage2: "ein Phase-2-Pokémon", VMAX: "ein VMAX-Pokémon", VSTAR: "ein VSTAR-Pokémon", MEGA: "ein Mega-Pokémon", BREAK: "ein TURBO-Pokémon", "LEVEL-UP": "ein Level-Up-Pokémon" }[e.st] || "ein Pokémon";
-  de(`${c.name}${e.hp ? ` hat ${num(e.hp)} Kraftpunkte.` : "."} Es ist ${stage}${typ ? " vom Typ " + typ : ""}.`);
-  (e.ab || []).forEach(([n, eff]) => { de(`Fähigkeit: ${n}.`); for(const t of sentences(sayClean(eff))) de(t); });
+  de(`${c.name}${e.hp ? ` hat ${num(e.hp)} Kraftpunkte und ist` : " ist"} ${stage}${typ ? " vom Typ " + typ : ""}.`);
+  (e.ab || []).forEach(([n, eff]) => { de(`Die Fähigkeit heißt ${n}. ${sayClean(eff)}`); });
   (e.a || []).forEach(([n, d, eff], i) => {
     const dm = sayDamage(d);
-    de(`${(e.a.length > 1 ? (ORD[i] || (i + 1) + ".") + " Attacke" : "Attacke")}: ${n}${dm ? ", " + dm : ""}.`);
-    for(const t of sentences(sayClean(eff))) de(t);
+    const nr = e.a.length > 1 ? "Die " + (ORD[i] || (i + 1) + ".").toLowerCase() + " Attacke" : "Die Attacke";
+    de(`${nr} heißt ${n}${dm ? " und macht " + dm : ""}.${eff ? " " + sayClean(eff) : ""}`);
   });
   const tail = [];
   if(e.w && e.w.length) tail.push(`Schwäche gegen ${e.w.map(t => TYPE_DE[t] || t).join(" und ")}`);
@@ -270,10 +270,17 @@ async function speakCard(c){
   show();
   speechSynthesis.cancel();
   // Satz für Satz sprechen: klingt natürlicher und bricht bei langen Texten nicht ab
-  const queue = parts.flatMap(p => (p.l === "en-US" ? sentences(p.t) : [p.t]).map(t => ({ t, l: p.l })));
+  const merged = [];
+  for(const p of parts){ const last = merged[merged.length - 1]; if(last && last.l === p.l) last.t += " " + p.t; else merged.push({ ...p }); }
+  const queue = [];
+  for(const p of merged){
+    let cur = "";
+    for(const t of sentences(p.t)){ if(cur && (cur + " " + t).length > 900){ queue.push({ t: cur, l: p.l }); cur = t; } else cur = cur ? cur + " " + t : t; }
+    if(cur) queue.push({ t: cur, l: p.l });
+  }
   queue.forEach((p, i) => {
     const u = new SpeechSynthesisUtterance(p.t); u.lang = p.l; const v = voiceFor(p.l); if(v) u.voice = v;
-    u.rate = p.l === "de-DE" ? 0.98 : 0.95; u.pitch = 1;
+    u.rate = 1; u.pitch = 1;
     if(i === queue.length - 1) u.onend = u.onerror = () => { if(speakingId === c.id){ speakingId = null; rerender(c); show(); } };
     speechSynthesis.speak(u);
   });
