@@ -51,11 +51,14 @@ function productUrl(c, verOverride){
   const expSlug = (known && known[4]) || c.cm_exp_slug || slug(exp);
   return `https://www.cardmarket.com/de/Pokemon/Products/Singles/${expSlug}/${slug(c.name_en || c.name)}${ver}-${code}${nr}?language=${langId(c)}&minCondition=2&sellerCountry=7`;
 }
+// Cardmarket-Filter: Sprache der Karte, mind. Near Mint, Verkäufer aus Deutschland
+const CMQ = c => `language=${langId(c)}&minCondition=2&sellerCountry=7`;
 function links(c){
   if(isOP(c)) return opLinks(c);
   if(!c.db && CDB) applyDb(c);
   const code = cmCode(c);
-  const S = "https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=";
+  const S0 = "https://www.cardmarket.com/de/Pokemon/Products/Search?" + CMQ(c) + "&searchString=";
+  const S = S0;
   const ebay = `<a class="alt" href="https://www.ebay.de/sch/i.html?_nkw=${encodeURIComponent([c.name, code || c.number, "pokemon"].filter(Boolean).join(" "))}&LH_Sold=1&LH_Complete=1" target="_blank" rel="noopener">eBay verkauft ↗</a>`;
   const del = `<button data-del="${esc(c.id)}">Entfernen</button>`;
   if(c.db && c.db.code){
@@ -280,17 +283,33 @@ function opApply(c){
   if(!c.rarity) c.rarity = OP_RAR[e[10]] || e[10];
   return c;
 }
+function opTitle(lab){
+  const st = OPDB && OPDB.sets.get(lab); let t = st ? st.title : "";
+  if(t && t === t.toUpperCase()) t = t.toLowerCase().replace(/(^|[\s(\-])([a-zà-ÿ])/g, (m, a, b) => a + b.toUpperCase()).replace(/\b(Of|The|In|On|His)\b/g, w => w.toLowerCase()).replace(/^./, x => x.toUpperCase()).replace(/'S\b/g, "'s");
+  return t.replace(/\s*\(nur Japan\)/, "");
+}
+// Direkte Kartenseite: /OnePiece/Products/Singles/<Erweiterung>/<Name>-<ID>[-V<n>]
+function opDirect(c){
+  if(!c.op || !c.versions || !c.versions.length) return "";
+  const v = c.versions[Math.min(c.vi || 0, c.versions.length - 1)];
+  if(!v || !v.pack || !/^(OP|EB|PRB)\d/.test(v.pack)) return "";
+  const exp = opTitle(v.pack); if(!exp) return "";
+  const same = c.versions.filter(x => x.pack === v.pack).sort((a, b) => a.id - b.id);
+  const k = same.length > 1 ? "-V" + (same.indexOf(v) + 1) : "";
+  return `https://www.cardmarket.com/de/OnePiece/Products/Singles/${slug(exp)}/${slug(c.op.name)}-${c.op.id}${k}?${CMQ(c)}`;
+}
 function opLinks(c){
   if(!c.op && OPDB) opApply(c);
   const id = c.op ? c.op.id : opId(c.number) || c.number || c.name;
-  const S = "https://www.cardmarket.com/de/OnePiece/Products/Search?searchString=";
-  const ebay = `<a class="alt" href="https://www.ebay.de/sch/i.html?_nkw=${encodeURIComponent([id, c.name_en || c.name, /parallel|alt|manga|sp|wanted|gold|treasure/i.test(c.variant || "") ? c.variant : "", "one piece"].filter(Boolean).join(" "))}&LH_Sold=1&LH_Complete=1" target="_blank" rel="noopener">eBay verkauft ↗</a>`;
+  const search = "https://www.cardmarket.com/de/OnePiece/Products/Search?" + CMQ(c) + "&searchString=" + encodeURIComponent(id);
+  const direct = opDirect(c);
+  const lang = c.op && c.op.jp ? "JP" : "EN";
+  const ebay = `<a class="alt" href="https://www.ebay.de/sch/i.html?_nkw=${encodeURIComponent([id, c.name_en || c.name, "one piece"].filter(Boolean).join(" "))}&LH_Sold=1&LH_Complete=1" target="_blank" rel="noopener">eBay verkauft ↗</a>`;
   const del = `<button data-del="${esc(c.id)}">Entfernen</button>`;
-  const n = c.op ? c.op.nver : 0;
-  const info = n > 1 ? `<div style="flex:1 1 100%;font-size:11.5px;color:var(--muted)">Diese Karte gibt es ${n}× (normal, Parallel/Alt Art, Reprints${c.op.packs.length > 1 ? " in " + esc(c.op.packs.join(", ")) : ""}). Auf Cardmarket die Version mit deinem Motiv antippen${c.variant ? " (" + esc(c.variant) + ")" : ""}, dann Filter „${c.op && c.op.jp ? "Japanisch" : "Englisch"}“ + „Deutschland“ + „NM“.</div>` : `<div style="flex:1 1 100%;font-size:11.5px;color:var(--muted)">Auf Cardmarket Filter „${c.op && c.op.jp ? "Japanisch" : "Englisch"}“ + „Deutschland“ + „NM“ setzen.</div>`;
   return `<div class="links">
-    <a class="cm" href="${S + encodeURIComponent(id)}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (${esc(id)}) ↗</a>
-    ${info}${ebay}${del}</div>`;
+    <a class="cm" href="${direct || search}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (DE · ${lang} · NM) ↗</a>
+    ${direct ? `<a class="alt" href="${search}" target="_blank" rel="noopener">Falsche Seite? Suche ${esc(id)} ↗</a>` : ""}
+    ${ebay}${del}</div>`;
 }
 function opFacts(c){
   const o = c.op; if(!o) return "";
