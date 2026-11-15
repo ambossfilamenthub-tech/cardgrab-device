@@ -12,7 +12,7 @@ function showTab(t){
   $("scan").hidden = t !== "scan"; $("coll").hidden = t !== "coll";
   if(t === "coll") renderColl();
 }
-function toast(t){ const el = $("toast"); el.textContent = t; el.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove("show"), 2200); }
+function toast(t){ const el = $("toast"); el.textContent = t; el.classList.remove("act"); el.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove("show"), 2200); }
 
 // ---------------- Preise (tägliche Cardmarket-Liste) ----------------
 let PP = null, OPP = null;
@@ -140,7 +140,7 @@ const idb = (() => {
 })();
 const persistable = c => { const o = { ...c }; delete o.price; delete o.versions; delete o.node; return o; };
 async function saveCard(c){ try{ await idb.put(persistable(c)); }catch(e){ console.warn(e); } }
-async function removeCard(id){
+async function removeCard(id, silent){
   coll = coll.filter(c => c.id !== id);
   try{ await idb.del(id); }catch{}
   document.querySelectorAll(`[data-card="${CSS.escape(id)}"]`).forEach(el => el.remove());
@@ -165,14 +165,16 @@ function refreshTotals(){
 }
 function renderColl(){
   const q = $("search").value.trim().toLowerCase(), so = $("sort").value;
-  let l = coll.filter(c => !q || [c.name, c.name_en, c.set, c.set_code, c.number, c.op && c.op.id, c.ygo && c.ygo.key, { pokemon: "pokemon", onepiece: "one piece", yugioh: "yugioh yu-gi-oh" }[c.game]].join(" ").toLowerCase().includes(q));
+  fillFilters();
+  let l = coll.filter(c => passFilters(c)).filter(c => !q || [c.name, c.name_en, c.set, c.set_code, c.number, c.op && c.op.id, c.ygo && c.ygo.key, { pokemon: "pokemon", onepiece: "one piece", yugioh: "yugioh yu-gi-oh" }[c.game]].join(" ").toLowerCase().includes(q));
   if(so === "val") l.sort((a, b) => totalOf(b) - totalOf(a));
   else if(so === "gain") l.sort((a, b) => ((totalOf(b) - buyTotalOf(b)) * (b.buy > 0)) - ((totalOf(a) - buyTotalOf(a)) * (a.buy > 0)));
   else if(so === "name") l.sort((a, b) => String(a.name).localeCompare(String(b.name), "de"));
   else if(so === "set") l.sort((a, b) => String(a.set).localeCompare(String(b.set), "de") || String(a.number).localeCompare(String(b.number), "de", { numeric: true }));
   else l.sort((a, b) => b.t - a.t);
   renderInsights();
-  $("collList").innerHTML = l.length ? l.map(c => cardHTML(c, "old")).join("") : `<div class="empty">${coll.length ? "Keine Treffer." : "Noch keine Karten. Scanne deine erste Karte!"}</div>`;
+  $("collList").innerHTML = l.length ? l.map(c => cardHTML(c, "old")).join("") : `<div class="empty">${coll.length ? "Keine Treffer für diesen Filter." : "Noch keine Karten. Scanne deine erste Karte!"}</div>`;
+  if(typeof updSelBar === "function" && SELMODE) updSelBar();
 }
 $("search").oninput = renderColl; $("sort").onchange = renderColl;
 $("csvBtn").onclick = () => { csvExport(); try{ localStorage.setItem("cgd-lastbackup", Date.now()); }catch{} renderColl(); };
@@ -199,7 +201,7 @@ function sanitizeCard(x){
   };
   const id = str(x.id, 40); if(!id || !/^[\w-]+$/.test(id)) return null;
   const c = { id };
-  for(const k of ["game", "name", "name_en", "name_jp", "number", "set", "set_en", "set_code", "language", "rarity", "cond", "cm_name", "cm_version", "cm_expansion", "cm_exp_slug", "op_effect_de", "op_trigger_de"]) if(str(x[k], 2000) !== undefined) c[k] = str(x[k], 2000);
+  for(const k of ["game", "name", "name_en", "name_jp", "number", "set", "set_en", "set_code", "language", "rarity", "cond", "cm_name", "cm_version", "cm_expansion", "cm_exp_slug", "op_effect_de", "op_trigger_de", "folder"]) if(str(x[k], 2000) !== undefined) c[k] = str(x[k], 2000);
   for(const [k, lo, hi] of [["t", 0, 1e14], ["vi", 0, 50], ["qty", 1, 9999], ["buy", 0, 1e6], ["real", 0, 1e6], ["realAt", 0, 1e14]]) if(numv(x[k], lo, hi) !== undefined) c[k] = numv(x[k], lo, hi);
   if(x.rh === true) c.rh = true;
   if(x.vAuto) c.vAuto = 1;
@@ -263,6 +265,7 @@ function cardHTML(c, mode){
       ${c.real > 0 ? `<small>✓ gilt als Wert · eingetragen ${new Date(c.realAt || Date.now()).toLocaleDateString("de-DE")}</small>` : ""}</div>
     <div class="speak"><button class="btn secondary small" data-say="${esc(c.id)}">${speakingId === c.id ? "⏹️ Stopp" : "🔊 Vorlesen"}</button><button class="btn secondary small" data-view="${esc(c.id)}">📄 Kartentext</button></div>
     <div class="facts" data-facts="${esc(c.id)}" hidden></div>
+    <div class="editrow"><button data-edit="${esc(c.id)}">✏️ Bearbeiten</button>${c.folder ? `<span class="fold">📁 ${esc(c.folder)}</span>` : ""}</div>
     ${c.ygo ? ygoLinks(c) : links(c)}
   </div>`;
 }
@@ -289,7 +292,7 @@ document.addEventListener("click", e => {
   const kv = e.target.closest("[data-view]");
   if(kv){ const c = coll.find(x => x.id === kv.dataset.view); const box = document.querySelector(`[data-facts="${CSS.escape(kv.dataset.view)}"]`); if(c && box){ if(!box.hidden && box.innerHTML){ box.hidden = true; } else showCardView(c, false); } return; }
   const sb = e.target.closest("[data-say]"); if(sb){ const c = coll.find(x => x.id === sb.dataset.say); if(c) speakCard(c); return; }
-  const d = e.target.closest("[data-del]"); if(d){ removeCard(d.dataset.del); return; }
+  const d = e.target.closest("[data-del]"); if(d){ removeCards([d.dataset.del]); return; }
   const vb = e.target.closest("[data-ver]");
   if(vb){ const c = coll.find(x => x.id === vb.dataset.ver); if(c){ c.vi = +vb.dataset.i; delete c.vAuto; if(c.op) delete c.img; attachPrice(c); saveCard(c); rerender(c); refreshTotals(); if(c.op) ensureImg(c); } return; }
   const rb = e.target.closest("[data-rh]");
@@ -924,13 +927,47 @@ function stopCam(){
   if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
   const v = $("video"); v.srcObject = null;
   $("camCover").hidden = false; $("closeCam").hidden = true; $("torchBtn").hidden = true; $("torchBtn").classList.remove("on"); $("camBtn").hidden = true; $("zoomWrap").hidden = true;
-  $("frame").classList.remove("focus", "hit"); $("readOut").textContent = "–"; steady = 0; armed = true;
+  $("frame").classList.remove("focus", "hit"); $("readOut").textContent = "–"; steady = 0; armed = true; clearLive();
   setStatus("Kamera aus. <b>📸 Foto machen</b> oder <b>🎥 Auto-Foto</b> zum Weiterscannen.");
 }
 $("closeCam").onclick = e => { e.stopPropagation(); stopCam(); };
 $("camBtn").onclick = e => { e.stopPropagation(); startCam(true); };
 $("barScan").onclick = () => $("photoInput").click();
 document.addEventListener("visibilitychange", () => { if(document.hidden && stream) stopCam(); });
+
+// ---- Live-Kartenerkennung im Kamerabild ----
+const LIVE = { at: 0, seen: 0, ok: false, stable: false, quad: null, prev: null };
+function clearLive(){ LIVE.ok = LIVE.stable = false; LIVE.quad = LIVE.prev = null; drawLive(null); }
+function liveDetect(v, X, Y, Wd, Hd){
+  // Bereich etwas größer als der Rahmen, klein gerechnet
+  const mx = Wd * 0.25, my = Hd * 0.15;
+  const x0 = Math.max(0, X - mx), y0 = Math.max(0, Y - my), x1 = Math.min(v.videoWidth, X + Wd + mx), y1 = Math.min(v.videoHeight, Y + Hd + my);
+  const k = 420 / Math.max(x1 - x0, y1 - y0);
+  const c = LIVE.cv || (LIVE.cv = document.createElement("canvas"));
+  c.width = Math.round((x1 - x0) * k); c.height = Math.round((y1 - y0) * k);
+  c.getContext("2d").drawImage(v, x0, y0, x1 - x0, y1 - y0, 0, 0, c.width, c.height);
+  let q = null; try{ q = findCardQuad(c); }catch{}
+  if(!q || q.landscape){ LIVE.ok = LIVE.stable = false; LIVE.prev = null; drawLive(null); return; }
+  const P = q.P.map(([x, y]) => [x0 + x / k, y0 + y / k]);
+  // ruhig? Ecken bewegen sich kaum gegenüber der letzten Messung
+  const size = Math.hypot(P[2][0] - P[0][0], P[2][1] - P[0][1]);
+  LIVE.stable = !!LIVE.prev && P.every((p, i) => Math.hypot(p[0] - LIVE.prev[i][0], p[1] - LIVE.prev[i][1]) < size * 0.035);
+  LIVE.prev = P; LIVE.quad = P; LIVE.ok = true; LIVE.seen = Date.now();
+  drawLive(P);
+}
+function drawLive(P){
+  const ov = $("quadOv"); if(!ov) return;
+  const cam = $("cam").getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  if(ov.width !== Math.round(cam.width * dpr)){ ov.width = Math.round(cam.width * dpr); ov.height = Math.round(cam.height * dpr); }
+  const g = ov.getContext("2d"); g.clearRect(0, 0, ov.width, ov.height);
+  const v = $("video"); if(!P || !v.videoWidth) return;
+  const s = Math.max(cam.width / v.videoWidth, cam.height / v.videoHeight), ox = (v.videoWidth * s - cam.width) / 2, oy = (v.videoHeight * s - cam.height) / 2;
+  g.save(); g.scale(dpr, dpr);
+  g.beginPath(); P.forEach(([x, y], i) => { const px = x * s - ox, py = y * s - oy; i ? g.lineTo(px, py) : g.moveTo(px, py); }); g.closePath();
+  g.lineWidth = 3; g.strokeStyle = LIVE.stable ? "#3ddc97" : "#22d3ee"; g.shadowColor = "rgba(0,0,0,.6)"; g.shadowBlur = 6; g.stroke();
+  g.fillStyle = LIVE.stable ? "rgba(61,220,151,.10)" : "rgba(34,211,238,.07)"; g.fill();
+  g.restore();
+}
 
 // Auto-Foto: Schärfe (Laplace-Varianz) + Ruhe im Kartenrahmen messen -> automatisch auslösen
 let armed = true, peak = 0, steady = 0, lastShotSharp = 0, lastShotAt = 0, shotSig = null;
@@ -963,7 +1000,9 @@ async function loop(){
       if(prev){ let m = 0; for(let i = 0; i < g.length; i++) m += Math.abs(g[i] - prev[i]); motion = m / g.length; }
       prev = g;
       peak = Math.max(sharp, peak * 0.92);
-      const present = contrast > 18;
+      // Live-Kartenerkennung (alle ~350 ms): Rahmen um die echte Karte zeichnen
+      if(typeof findCardQuad === "function" && Date.now() - LIVE.at > 350){ LIVE.at = Date.now(); liveDetect(v, X, Y, Wd, Hd); }
+      const present = contrast > 18 || LIVE.ok;
       if(!armed){
         // nach einem Foto: erst wieder auslösen, wenn eine andere Karte im Rahmen liegt
         // neue Karte = Bild im Rahmen unterscheidet sich deutlich vom letzten Foto (oder Rahmen leer)
@@ -972,10 +1011,11 @@ async function loop(){
         $("readOut").textContent = "✓ Foto gemacht – nächste Karte" + queueInfo();
       } else {
         // locker: leichte Handbewegung ist ok, Bild muss nur halbwegs scharf sein
-        const good = present && motion < 14 && sharp > 14 && sharp >= peak * 0.6;
+        // mit gefundener, ruhiger Karte darf etwas großzügiger ausgelöst werden
+        const good = present && motion < (LIVE.stable ? 18 : 14) && sharp > (LIVE.stable ? 10 : 14) && sharp >= peak * 0.6;
         steady = good ? steady + 1 : 0;
         $("frame").classList.toggle("focus", steady > 0);
-        $("readOut").textContent = (!present ? "Karte in den Rahmen halten" : motion >= 14 ? "Etwas ruhiger halten …" : sharp <= 14 ? "Wird scharf gestellt …" : steady ? "Scharf ✓ – Foto!" : "Fokussiere …") + queueInfo();
+        $("readOut").textContent = (LIVE.ok && !LIVE.stable && steady ? "Karte erkannt – ruhig halten …" : !present ? "Karte in den Rahmen halten" : motion >= 14 ? "Etwas ruhiger halten …" : sharp <= 14 ? "Wird scharf gestellt …" : steady ? "Scharf ✓ – Foto!" : "Fokussiere …") + queueInfo();
         if(steady >= 2){ shotSig = g; await autoShot(v, X, Y, Wd, Hd, sharp); }
       }
     }catch(e){ console.warn(e); }
@@ -995,6 +1035,17 @@ async function autoShot(v, X, Y, Wd, Hd, sharp){
   $("frame").classList.remove("focus"); $("frame").classList.add("hit");
   const cam = $("cam"); cam.classList.add("flash"); setTimeout(() => cam.classList.remove("flash"), 350);
   if(navigator.vibrate) navigator.vibrate(40);
+  // Karte live gefunden -> direkt gerade ausgeschnitten aus dem vollen Videobild verwenden
+  if(LIVE.ok && LIVE.quad && Date.now() - LIVE.seen < 700){
+    try{
+      const full = document.createElement("canvas"); full.width = v.videoWidth; full.height = v.videoHeight;
+      full.getContext("2d").drawImage(v, 0, 0);
+      const card = warpCard(full, LIVE.quad, 1000);
+      setTimeout(() => $("frame").classList.remove("hit"), 600);
+      shotQ.push(card); busy = false; lastShotAt = Date.now(); clearLive();
+      runQueue(); return;
+    }catch(e){ console.warn(e); }
+  }
   // Kartenbereich mit etwas Rand in voller Videoauflösung ausschneiden
   const mx = Wd * 0.12, my = Hd * 0.08;
   const x0 = Math.max(0, X - mx), y0 = Math.max(0, Y - my), x1 = Math.min(v.videoWidth, X + Wd + mx), y1 = Math.min(v.videoHeight, Y + Hd + my);
@@ -1294,7 +1345,7 @@ Promise.all([collReady, pricesReady]).then(async () => {
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
 // ---------------- Update-Knopf ----------------
-const APP_FILES = ["./", "index.html", "app.js", "lib/cards.js", "lib/ygo.js", "lib/collection.js", "lib/sounds.js", "lib/cardfind.js", "sw.js", "manifest.webmanifest", "version.json"];
+const APP_FILES = ["./", "index.html", "app.js", "lib/cards.js", "lib/ygo.js", "lib/collection.js", "lib/sounds.js", "lib/cardfind.js", "lib/manage.js", "sw.js", "manifest.webmanifest", "version.json"];
 const getVer = () => { try{ return localStorage.getItem("cgd-ver") || ""; }catch{ return ""; } };
 const setVer = v => { try{ localStorage.setItem("cgd-ver", v); }catch{} };
 async function latestVersion(){
