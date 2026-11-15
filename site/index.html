@@ -68,6 +68,10 @@
   .mmsg.ok{background:rgba(61,220,151,.1);color:var(--good)}
   .mmsg.bad{background:rgba(255,107,129,.1);color:#ffb3c0}
   .mmsg a{color:var(--accent)}
+  footer a{color:var(--accent)} footer small{display:block;margin-top:6px;opacity:.75;line-height:1.4}
+  .note.src{font-size:11px;opacity:.85} .note.src a{color:var(--accent)}
+  .warn{background:rgba(255,193,7,.1);border:1px solid rgba(255,193,7,.35);color:#ffe3a0;border-radius:12px;padding:9px 11px;font-size:12.5px;line-height:1.45;margin-bottom:8px}
+  .lnk{background:none;border:0;color:var(--accent);font:700 12.5px system-ui,sans-serif;padding:0;text-decoration:underline}
   .manual input{flex:1;min-width:0;background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:11px 12px;font:15px system-ui,sans-serif;text-transform:uppercase}
   .vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0);pointer-events:none}
 
@@ -288,13 +292,13 @@
     <div id="collList"></div>
   </section>
 
-  <div class="hint"><b>So funktioniert's:</b> Die Erkennung läuft komplett auf deinem Handy: Die Kamera liest Set-Kürzel und Nummer und sucht die Karte in der eingebauten Datenbank (alle Pokémon-Sets EN/DE, One Piece EN/JP, Yu-Gi-Oh! alle Sets – die Sprache steht im Kürzel, z. B. LOB-<b>DE</b>005). Die Preise stammen aus der offiziellen Cardmarket-Preisliste, die jeden Morgen neu geladen wird. Als Wert zählt der <b>ab-Preis</b> (günstigstes Angebot aller Sprachen), dazu Trend und 30-Tage-Ø. Die Liste kennt keine Preise pro Sprache – trag den günstigsten Preis in deiner Sprache unter der Karte ein, dann zählt dieser. Der Cardmarket-Button öffnet die Karte gefiltert auf <b>Verkäufer aus Deutschland, Near Mint und die Sprache deiner Karte</b>. Deine Sammlung bleibt nur auf diesem Gerät – nutze „Sicherung speichern“ als Backup.</div>
+  <div class="hint"><b>So funktioniert's:</b> Die Erkennung läuft komplett auf deinem Handy: Die Kamera liest Set-Kürzel und Nummer und sucht die Karte in der eingebauten Datenbank (alle Pokémon-Sets EN/DE, One Piece EN/JP, Yu-Gi-Oh! alle Sets – die Sprache steht im Kürzel, z. B. LOB-<b>DE</b>005). Die Preise stammen aus der öffentlichen Cardmarket-Preisliste, die jeden Morgen neu geladen wird – unverbindliche Richtwerte ohne Gewähr. Als Wert zählt der <b>ab-Preis</b> (günstigstes Angebot aller Sprachen), dazu Trend und 30-Tage-Ø. Die Liste kennt keine Preise pro Sprache – trag den günstigsten Preis in deiner Sprache unter der Karte ein, dann zählt dieser. Der Cardmarket-Button öffnet die Karte gefiltert auf <b>Verkäufer aus Deutschland, Near Mint und die Sprache deiner Karte</b>. Deine Sammlung bleibt nur auf diesem Gerät – nutze „Sicherung speichern“ als Backup.</div>
   <div class="upd">
     <button class="btn secondary" id="updBtn">🔄 Nach Updates suchen</button>
     <small id="verTxt">Version wird geprüft …</small>
     <a href="#" id="forceUpd">Neu laden erzwingen</a>
   </div>
-  <footer>CardGrab Device · Grab your cards · ein Teil von CappyGrab</footer>
+  <footer>CardGrab Device · ein Teil von CappyGrab<br><a href="legal.html#impressum">Impressum</a> · <a href="legal.html#datenschutz">Datenschutz</a> · <a href="legal.html#hinweise">Hinweise</a><br><small>Inoffizielle Fan-App – nicht verbunden mit Nintendo/The Pokémon Company, Bandai, Konami oder Cardmarket. Preise: Cardmarket, Richtwerte ohne Gewähr.</small></footer>
 </div>
 
 <div class="sheet" id="sheet" hidden><div class="in" id="sheetIn"></div></div>

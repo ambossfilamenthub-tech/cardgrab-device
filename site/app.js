@@ -50,8 +50,9 @@ const valueOf = c => { if(c.real > 0) return c.real; const p = c.price; if(!p) r
 // Pokémon: TCGdex (deutsch, sonst englisch) · One Piece: Limitless-Bildarchiv · Yu-Gi-Oh!: YGOPRODeck
 async function findImg(c){
   // eigene, gespeicherte Bilder zuerst (img/…), sonst direkt von der Quelle
-  if(c.ygo) return `img/ygo/${c.ygo.pc}.webp https://images.ygoprodeck.com/images/cards_small/${c.ygo.pc}.jpg`;
-  if(c.op){ const n = opImgName(c); const set = c.op.id.startsWith("P-") ? "P" : c.op.id.split("-")[0]; return `img/op/${n}.webp https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/one-piece/${set}/${n}.webp`; }
+  // Bilder werden nur verlinkt (nicht selbst gespeichert) – Rechte liegen bei den Herausgebern
+  if(c.ygo) return `https://images.ygoprodeck.com/images/cards_small/${c.ygo.pc}.jpg`;
+  if(c.op){ const n = opImgName(c); const set = c.op.id.startsWith("P-") ? "P" : c.op.id.split("-")[0]; return `https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/one-piece/${set}/${n}.webp`; }
   if(c.db && c.db.sid){
     const langs = langShort(c) === "DE" ? ["de", "en"] : ["en", "de"];
     for(const l of langs){
@@ -70,8 +71,8 @@ function opImgName(c, suf){
   if(suf === undefined){ const n = c.versions && c.versions.length; suf = n && n === vs.length ? vs[Math.min(c.vi || 0, vs.length - 1)] : ""; }
   return `${c.op.id}${suf ? "_" + suf : ""}_${c.op.jp && !suf ? "JP" : "EN"}`;
 }
-const imgSrc = c => String(c.img || "").split(" ")[0];
-const imgFallback = c => [...String(c.img || "").split(" ").slice(1), c.thumb || "-"].join(" ");
+const imgSrc = c => { const l = String(c.img || "").split(" ").filter(u => !u.startsWith("img/")); return l[0] || ""; };
+const imgFallback = c => [...String(c.img || "").split(" ").filter(u => !u.startsWith("img/")).slice(1), c.thumb || "-"].join(" ");
 // Version per Bildvergleich wählen (One Piece: normal / Parallel / Alt Art haben verschiedene Motive)
 const loadImg = u => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = u; });
 function imgVec(im){
@@ -85,6 +86,7 @@ function imgVec(im){
 }
 const cosSim = (a, b) => { let s = 0; for(let i = 0; i < a.length; i++) s += a[i] * b[i]; return s / a.length; };
 async function guessOpVariant(c){
+  return;   // abgeschaltet: braucht selbst gespeicherte Bilder (aus rechtlichen Gründen entfernt)
   if(!c.op || !c.thumb || !c.versions || c.versions.length < 2) return;
   const vs = opVariants(c); if(vs.length !== c.versions.length) return;
   try{
@@ -172,10 +174,11 @@ function renderColl(){
   $("collList").innerHTML = l.length ? l.map(c => cardHTML(c, "old")).join("") : `<div class="empty">${coll.length ? "Keine Treffer." : "Noch keine Karten. Scanne deine erste Karte!"}</div>`;
 }
 $("search").oninput = renderColl; $("sort").onchange = renderColl;
-$("csvBtn").onclick = () => csvExport();
+$("csvBtn").onclick = () => { csvExport(); try{ localStorage.setItem("cgd-lastbackup", Date.now()); }catch{} renderColl(); };
 $("exportBtn").onclick = () => {
   const blob = new Blob([JSON.stringify({ app: "CardGrab Device", v: 1, date: new Date().toISOString(), cards: coll.map(persistable) })], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `cardgrab-sammlung-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+  try{ localStorage.setItem("cgd-lastbackup", Date.now()); }catch{} setTimeout(renderColl, 300);
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 };
 $("importInput").onchange = async e => {
@@ -332,7 +335,7 @@ async function cardViewHTML(c){
 }
 async function showCardView(c, voices){
   const html = await cardViewHTML(c);
-  document.querySelectorAll(`[data-facts="${CSS.escape(c.id)}"]`).forEach(el => { el.hidden = false; el.innerHTML = (html || `<div class="note">Für diese Karte gibt es keinen Kartentext.</div>`) + (voices ? voicePicker() : ""); });
+  document.querySelectorAll(`[data-facts="${CSS.escape(c.id)}"]`).forEach(el => { el.hidden = false; el.innerHTML = (html ? html + `<div class="note src">Text: ${c.ygo ? "YGOPRODeck" : c.op ? "punk-records" : "TCGdex"}${c.op ? " · maschinell übersetzt" : " · teils maschinell übersetzt"} – inoffiziell, im Zweifel gilt die gedruckte Karte. <a href="legal.html#hinweise">Hinweise</a></div>` : `<div class="note">Für diese Karte gibt es keinen Kartentext.</div>`) + (voices ? voicePicker() : ""); });
   return !!html;
 }
 
