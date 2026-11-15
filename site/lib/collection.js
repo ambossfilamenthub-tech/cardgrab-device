@@ -123,13 +123,13 @@ document.addEventListener("click", e => {
 function csvExport(){
   const q = v => { const s = String(v ?? ""); return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
   const num = n => (typeof n === "number" && isFinite(n) && n > 0) ? n.toFixed(2).replace(".", ",") : "";
-  const head = ["Cardmarket-ID", "Spiel", "Name", "Name (EN)", "Set", "Kürzel/Nummer", "Version", "Sprache", "Zustand", "Anzahl", "Einkauf €/Stk.", "Wert ab €/Stk.", "Trend €/Stk.", "Wert gesamt €", "Gewinn €", "Cardmarket-Link"];
+  const head = ["Cardmarket-ID", "Spiel", "Name", "Name (EN)", "Set", "Kürzel/Nummer", "Version", "Sprache", "Zustand", "Grading", "Anzahl", "Einkauf €/Stk.", "Wert ab €/Stk.", "Trend €/Stk.", "Wert gesamt €", "Gewinn €", "Cardmarket-Link"];
   const rows = coll.map(c => {
     const p = c.price || {}, v = c.versions && c.versions[Math.min(c.vi || 0, c.versions.length - 1)];
     const link = ((c.ygo ? ygoLinks(c) : links(c)).match(/class="cm" href="([^"]+)"/) || [])[1] || "";
     const code = c.op ? c.op.id : c.ygo ? c.number : cmCode(c) || c.number || "";
     return [p.id || (v && v.id) || (c.db && c.db.cm) || "", { onepiece: "One Piece", yugioh: "Yu-Gi-Oh!" }[c.game] || "Pokémon", c.name, c.name_en || "", c.set || "", code,
-      v ? (v.pack || "V" + ((c.vi || 0) + 1)) : c.rh ? "Reverse Holo" : "", c.language || "", c.cond || "NM", qtyOf(c),
+      v ? (v.pack || "V" + ((c.vi || 0) + 1)) : c.rh ? "Reverse Holo" : "", c.language || "", c.cond || "NM", c.grade || "", qtyOf(c),
       num(c.buy), num(valueOf(c)), num(p.trend), num(totalOf(c)), c.buy > 0 ? (totalOf(c) - buyTotalOf(c)).toFixed(2).replace(".", ",") : "", link.replace(/&amp;/g, "&")].map(q).join(";");
   });
   const blob = new Blob(["﻿" + [head.join(";"), ...rows].join("\r\n")], { type: "text/csv;charset=utf-8" });

@@ -143,21 +143,35 @@ async function editCard(id){
     { v: "alt", label: "🔁 Andere Ausgabe / anderes Set", sub: "falls die Karte falsch erkannt wurde" },
     { v: "lang", label: "🌍 Sprache ändern", sub: c.language || "" },
     { v: "folder", label: "📁 Ordner", sub: c.folder || "kein Ordner" },
-    { v: "cond", label: "🏷️ Zustand", sub: c.cond || "NM" }
+    { v: "cond", label: "🏷️ Zustand", sub: c.cond || "NM" },
+    { v: "grade", label: "🏅 Grading (PSA, BGS, CGC …)", sub: c.grade || "nicht gegradet" },
+    { v: "wish", label: "⭐ Auf die Wunschliste", sub: "z. B. um eine zweite zu kaufen" }
   ]);
   if(!act) return;
   if(act === "lang"){ const v = await pickFrom("Sprache der Karte", LANGS.map(l => ({ v: l, label: l, right: l === c.language ? "✓" : "" }))); if(!v) return; setLanguage(c, v); }
   else if(act === "folder"){ const f = await chooseFolder(); if(f === undefined) return; if(f) c.folder = f; else delete c.folder; }
   else if(act === "cond"){ const v = await pickFrom("Zustand", CONDS.map(([k, n]) => ({ v: k, label: `${k} · ${n}`, right: k === (c.cond || "NM") ? "✓" : "" }))); if(!v) return; c.cond = v; }
+  else if(act === "grade"){
+    const co = await pickFrom("Grading-Firma", ["Nicht gegradet", "PSA", "BGS (Beckett)", "CGC", "SGC", "TAG", "Andere"].map(x => ({ v: x, label: x, right: c.grade && c.grade.startsWith(x.split(" ")[0]) ? "✓" : "" }))); if(!co) return;
+    if(co === "Nicht gegradet") delete c.grade;
+    else {
+      const g = await pickFrom(`${co} – Note`, ["10", "9.5", "9", "8.5", "8", "7.5", "7", "6", "5", "4", "3", "2", "1", "Authentic"].map(x => ({ v: x, label: x }))); if(!g) return;
+      c.grade = `${co.split(" ")[0]} ${g}`;
+      if(!(c.real > 0)) toast("Tipp: Gegradete Karten haben eigene Preise – trag unter „Eigener Preis“ deinen Wert ein");
+    }
+  }
+  else if(act === "wish"){ wishAdd(c); return; }
   else if(act === "alt"){
     toast("Suche Ausgaben …");
     const alts = await alternativesFor(c);
     if(!alts.length){ toast("Keine anderen Ausgaben gefunden"); return; }
     const pick = await pickFrom(`Welche Ausgabe ist „${c.name}“?`, alts.map((a, i) => ({ v: i, label: a.label, sub: a.sub }))); if(pick === undefined) return;
+    const before = identity(c);
     const n = alts[pick].c, keep = {}; for(const k of KEEP) if(c[k] !== undefined) keep[k] = c[k];
     for(const k of Object.keys(c)) delete c[k];
     Object.assign(c, n, keep); c.vi = 0; delete c.img; delete c.pv; delete c.versions; delete c.price;
     attachPrice(c);
+    learnSet(before, c);
   }
   await saveCard(c); rerender(c); refreshTotals(); renderColl(); ensureImg(c);
   toast("Gespeichert ✓");
