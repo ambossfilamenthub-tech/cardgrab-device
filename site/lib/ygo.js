@@ -74,7 +74,9 @@ function ygoPrintsLabeled(pc, language){
 }
 function ygoAttachPrice(c){
   const vs = (YGOP && YGOP.c && YGOP.c[c.ygo.key]) || [];
-  c.versions = vs.map(v => ({ id: v[0], low: v[1], trend: v[2], avg7: v[3], avg30: v[4], guess: !!v[5], pack: v[6] || "" }));
+  // sicher zugeordnete Seltenheiten zuerst, geschätzte/unbenannte danach
+  c.versions = vs.map(v => ({ id: v[0], low: v[1], trend: v[2], avg7: v[3], avg30: v[4], guess: !!v[5] || !v[6], pack: v[6] || "?" }))
+    .sort((a, b) => (a.guess - b.guess) || 0);
   const i = Math.min(c.vi || 0, Math.max(0, c.versions.length - 1));
   const v = c.versions[i];
   if(v) c.price = { low: v.low, trend: v.trend, avg7: v.avg7, avg30: v.avg30, id: v.id };
