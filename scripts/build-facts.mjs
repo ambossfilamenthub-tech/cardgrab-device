@@ -10,7 +10,11 @@ if(!root || !out){ console.error("Aufruf: node build-facts.mjs <data> <out>"); p
 fs.mkdirSync(out, { recursive: true });
 
 // Deutsch bevorzugt; nur englisch vorhanden → mit \u0001 markieren, translate-de.py übersetzt das später
-const pick = o => (o && typeof o === "object") ? (o.de || (o.en ? "\u0001" + o.en : "")) : (o || "");
+// TCGdex hat bei alten Sets oft den englischen Text im Feld "de" → dann auch als englisch behandeln
+const NAMES = new Map(); // englischer → deutscher Pokémon-Name
+let NAME_RE = null;
+const deName = t => NAME_RE ? t.replace(NAME_RE, m => NAMES.get(m) || m) : t;
+const pick = o => (o && typeof o === "object") ? ((o.de && o.de !== o.en) ? o.de : (o.en ? "\u0001" + o.en : (o.de || ""))) : (o || "");
 const pickName = o => (o && typeof o === "object") ? (o.de || "") : "";
 function load(file){
   let src = fs.readFileSync(file, "utf8");
@@ -23,6 +27,7 @@ function load(file){
 const idOf = file => { const s = fs.readFileSync(file, "utf8"); const m = s.match(/\bid\s*:\s*["'`]([^"'`]+)["'`]/); return m ? m[1] : ""; };
 
 let sets = 0, cards = 0, fail = 0;
+const pending = [];
 for(const serie of fs.readdirSync(root)){
   const sdir = path.join(root, serie);
   if(!fs.statSync(sdir).isDirectory() || /Pocket/i.test(serie)) continue;
@@ -37,7 +42,10 @@ for(const serie of fs.readdirSync(root)){
       try{
         const c = load(path.join(cdir, cf));
         const e = {};
-        const nm = pickName(c.name); if(nm) e.n = nm;
+        const nm = pickName(c.name); if(nm) e.n = nm; else if(c.name && c.name.en) e.n = "\u0002" + c.name.en;
+        if(c.name && c.name.en && c.name.de && c.name.en !== c.name.de && c.category === "Pokemon"){
+          for(const v of [c.name.en, c.name.en.replace(/ ex$/, "")]) if(v.length > 3 && !NAMES.has(v)) NAMES.set(v, v === c.name.en ? c.name.de : c.name.de.replace(/-ex$| ex$/, ""));
+        }
         if(c.hp) e.hp = c.hp;
         if(c.types && c.types.length) e.t = c.types;
         if(c.stage) e.st = c.stage;
@@ -45,7 +53,7 @@ for(const serie of fs.readdirSync(root)){
         if(c.abilities && c.abilities.length) e.ab = c.abilities.map(a => [pick(a.name), pick(a.effect)]);
         if(c.weaknesses && c.weaknesses.length){ e.w = c.weaknesses.map(w => w.type); e.wv = c.weaknesses.map(w => w.value || ""); }
         if(c.resistances && c.resistances.length) e.rs = c.resistances.map(r => [r.type, r.value || ""]);
-        if(c.evolveFrom) e.ef = pickName(c.evolveFrom) || (c.evolveFrom.en || "");
+        if(c.evolveFrom) e.ef = (c.evolveFrom.de && c.evolveFrom.de !== c.evolveFrom.en) ? c.evolveFrom.de : "\u0002" + (c.evolveFrom.en || "");
         if(c.suffix) e.sx = c.suffix;
         if(c.retreat !== undefined) e.r = c.retreat;
         if(c.effect) e.e = pick(c.effect);
@@ -54,7 +62,12 @@ for(const serie of fs.readdirSync(root)){
         res[cf.slice(0, -3)] = e; cards++;
       }catch{ fail++; }
     }
-    if(Object.keys(res).length){ fs.writeFileSync(path.join(out, sid + ".json"), JSON.stringify(res)); sets++; }
+    if(Object.keys(res).length){ pending.push([sid, res]); sets++; }
   }
 }
+// englische Pokémon-Namen in englischen Texten durch deutsche ersetzen (längste zuerst)
+const sorted = [...NAMES].sort((a, b) => b[0].length - a[0].length); NAMES.clear(); for(const [a, b] of sorted) if(a !== b) NAMES.set(a, b);
+NAME_RE = new RegExp("(?<![\\w'’-])(" + [...NAMES.keys()].map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")(?![\\w-])", "g");
+const fix = x => typeof x === "string" ? (x.startsWith("\u0001") ? "\u0001" + deName(x.slice(1)) : x.startsWith("\u0002") ? deName(x.slice(1)) : x) : Array.isArray(x) ? x.map(fix) : (x && typeof x === "object") ? Object.fromEntries(Object.entries(x).map(([k, v]) => [k, fix(v)])) : x;
+for(const [sid, res] of pending) fs.writeFileSync(path.join(out, sid + ".json"), JSON.stringify(fix(res)));
 console.log(`✔ Vorlese-Daten: ${sets} Sets, ${cards} Karten (${fail} nicht lesbar)`);

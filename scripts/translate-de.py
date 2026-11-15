@@ -116,6 +116,7 @@ def du_form(t):
 def fix_de(t):
     # kleine Korrekturen typischer Übersetzungsfehler
     t = du_form(t)
+    t = re.sub(r"\bHP\b", "KP", t)
     for a, b in [("Pokemon", "Pokémon"), ("Pokémons", "Pokémon"), ("KO'd", "K.O."), ("Knocked Out", "kampfunfähig"),
                  ("am Boden deines Decks", "unter dein Deck"), ("auf den Boden deines Decks", "unter dein Deck"), ("am Boden des Decks", "unter das Deck"),
                  ("von der Oberseite deines Decks", "oben von deinem Deck"), ("ausgeruhte", "ruhende"), ("ausgeruht", "ruhend"),
