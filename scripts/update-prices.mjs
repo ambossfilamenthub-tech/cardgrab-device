@@ -1,7 +1,7 @@
 // CardGrab Device – täglicher Cardmarket-Preis-Download
 // Lädt die öffentlichen Cardmarket-Dateien (Preisliste + Produktkatalog) und baut daraus kleine Preisdateien für die App:
 //   site/prices-pokemon.json   { date, p: { idProduct: [low, trend, avg1, avg7, avg30, lowHolo, trendHolo, avg30Holo] } }
-//   site/prices-onepiece.json  { date, c: { "OP05-119": [[idProduct, low, trend, avg7, avg30, geschätzt], ...] } }
+//   site/prices-onepiece.json  { date, c: { "OP05-119": [[idProduct, low, trend, avg7, avg30, geschätzt, Set], ...] } }
 // Läuft in GitHub Actions (siehe .github/workflows/prices.yml), ohne Zusatzpakete (Node 20+).
 import fs from "node:fs";
 import path from "node:path";
@@ -136,10 +136,11 @@ async function onepiece(){
     if(map.has(p.id) || p.meta == null) continue;
     const s = metaCode.get(p.meta); if(s && s.size === 1) map.set(p.id, [...s][0]);
   }
+  const prodExp = new Map(products.map(p => [p.id, p.exp]));
   const c = {};
   for(const [id, code] of [...map.entries()].sort((a, b) => a[0] - b[0])){
     const pr = prices.get(id) || [0, 0, 0, 0];
-    (c[code] = c[code] || []).push([id, ...pr, guessed.has(id) ? 1 : 0]);
+    (c[code] = c[code] || []).push([id, ...pr, guessed.has(id) ? 1 : 0, expPack.get(prodExp.get(id)) || ""]);
   }
   writeJson("prices-onepiece.json", { date: (pg.createdAt || today()).slice(0, 10), n: map.size, c });
   console.log(`  One Piece: ${products.length} Produkte, ${map.size} einer Karten-ID zugeordnet (${Object.keys(c).length} IDs), ${expPack.size}/${byExp.size} Erweiterungen erkannt`);
