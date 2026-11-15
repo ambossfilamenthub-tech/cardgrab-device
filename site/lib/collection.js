@@ -42,7 +42,7 @@ document.addEventListener("click", e => {
   e.stopPropagation();
   const c = coll.find(x => x.id === b.dataset.qty); if(!c) return;
   const n = qtyOf(c) + (+b.dataset.d);
-  if(n < 1){ if(confirmRemove(c)) removeCard(c.id); return; }
+  if(n < 1){ if(confirmRemove(c)) removeCards([c.id]); return; }
   c.qty = n; saveCard(c); rerender(c); refreshTotals();
 }, true);
 function confirmRemove(c){
