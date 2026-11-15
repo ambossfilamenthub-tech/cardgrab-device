@@ -594,13 +594,33 @@ function setStatus(h){ $("status").innerHTML = h; }
 
 // ---------------- Texterkennung (Tesseract, läuft im Browser) ----------------
 let worker = null;
+// Mehrere Texterkennungs-Worker: Ausschnitte werden parallel gelesen (Handys haben 4–8 Kerne)
+const POOL = [], POOL_WAIT = [];
+const POOL_N = Math.max(2, Math.min(3, ((navigator.hardwareConcurrency || 4) >= 6) ? 3 : 2));
+async function makeWorker(){
+  const w = await Tesseract.createWorker("eng", 1, { workerPath: "lib/worker.min.js", corePath: "lib/core", langPath: "lib/lang", gzip: true, cacheMethod: "write" });
+  await w.setParameters({ tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/- ", tessedit_pageseg_mode: "11", preserve_interword_spaces: "1" });
+  w.busy = false; POOL.push(w); poolNext(); return w;
+}
+function poolNext(){ while(POOL_WAIT.length){ const w = POOL.find(x => !x.busy); if(!w) return; w.busy = true; POOL_WAIT.shift()(w); } }
+const poolGet = () => new Promise(res => { POOL_WAIT.push(res); poolNext(); });
+const poolPut = w => { w.busy = false; poolNext(); };
+async function ocr(canvas, wl){
+  const w = await poolGet();
+  try{
+    if(wl) await w.setParameters({ tessedit_char_whitelist: wl });
+    return ((await w.recognize(canvas)).data.text || "").replace(/\s+/g, " ").trim();
+  } finally {
+    if(wl) await w.setParameters({ tessedit_char_whitelist: WL }).catch(() => {});
+    poolPut(w);
+  }
+}
 const ocrReady = (async () => {
   try{
-    worker = await Tesseract.createWorker("eng", 1, {
-      workerPath: "lib/worker.min.js", corePath: "lib/core", langPath: "lib/lang", gzip: true, cacheMethod: "write"
-    });
-    await worker.setParameters({ tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/- ", tessedit_pageseg_mode: "11", preserve_interword_spaces: "1" });
+    worker = await makeWorker();
     $("ocrState").textContent = "Texterkennung bereit ✓";
+    // weitere Worker im Hintergrund nachladen (Start bleibt schnell)
+    setTimeout(() => { for(let i = 1; i < POOL_N; i++) makeWorker().catch(e => console.warn(e)); }, 1500);
     return true;
   }catch(e){ console.error(e); $("ocrState").textContent = "Texterkennung konnte nicht geladen werden – manuelle Eingabe nutzen."; return false; }
 })();
@@ -636,15 +656,12 @@ function prepStrip(src, sx, sy, sw, sh, invert, maxW, adaptive){
   return cv;
 }
 async function ocrRegion(src, sx, sy, sw, sh, opts){
-  let best = null, txt = "";
-  for(const inv of (opts && opts.noInvert) ? [false] : [false, true]){
-    const cv = prepStrip(src, sx, sy, sw, sh, inv, opts && opts.maxW, opts && opts.adaptive);
-    const { data } = await worker.recognize(cv);
-    txt = (data.text || "").replace(/\s+/g, " ").trim();
-    best = parseRead(txt);
-    if(best) break;
-  }
-  return { r: best, text: txt };
+  const invs = (opts && opts.noInvert) ? [false] : [false, true];
+  const res = await Promise.all(invs.map(async inv => {
+    const t = await ocr(prepStrip(src, sx, sy, sw, sh, inv, opts && opts.maxW, opts && opts.adaptive));
+    return { r: parseRead(t), text: t };
+  }));
+  return res.find(x => x.r) || { r: null, text: res.map(x => x.text).join(" ") };
 }
 
 // ---------------- Kamera ----------------
@@ -890,46 +907,52 @@ async function analyzePhoto(file, opts){
     if(!weak) weak = r;
     return null;
   };
-  // einzelner Durchgang mit fester Schriftfarbe (normal / hell auf dunkel)
-  const tryAreaInv = async (src, x, y, w, h, label, inv) => {
-    step(label);
-    const pc = prepStrip(src, x, y, w, h, inv, 3000, true);
-    const { data } = await worker.recognize(pc);
-    const text = (data.text || "").replace(/\s+/g, " ").trim();
+  // ein Ausschnitt mit fester Schriftfarbe (normal / hell auf dunkel)
+  const readArea = async (src, x, y, w, h, inv, maxW) => {
+    const text = await ocr(prepStrip(src, x, y, w, h, inv, maxW || 1700, true));
     texts.push(text); $("readOut").textContent = text ? text.slice(0, 60) : "–";
     return keep(parseRead(text));
   };
+  // mehrere Ausschnitte gleichzeitig lesen; erster sicherer Treffer gewinnt
+  const race = async (label, jobs) => {
+    step(label);
+    let found = null;
+    await new Promise(res => {
+      let left = jobs.length; if(!left) return res();
+      for(const j of jobs) j().then(r => { if(r && !found){ found = r; res(); } }).catch(() => {}).finally(() => { if(--left === 0) res(); });
+    });
+    return found;
+  };
   let hit = null;
   try{
-    // 0) Auto-Foto: Karte liegt im Rahmen -> erst nur den unteren Kartenrand lesen (schnell)
-    if(opts && opts.quick){
-      for(const inv of [false, true]){
-        hit = await tryAreaInv(cv, 0, H * 0.74, W, H * 0.26, `Lese Kürzel + Nummer${inv ? " (helle Schrift)" : ""} …`, inv);
-        if(hit) break;
+    // 1) wahrscheinlichste Stellen zuerst, parallel: unterer Kartenrand (Pokémon/One Piece, dunkle + helle Schrift)
+    //    und die Zeile unter dem Bild (Yu-Gi-Oh!-Kürzel)
+    const quick = opts && opts.quick;
+    hit = await race("Lese Kürzel + Nummer …", [
+      () => readArea(cv, 0, H * 0.78, W, H * 0.22, false, 1500),
+      () => readArea(cv, 0, H * 0.78, W, H * 0.22, true, 1500),
+      ...(YGO ? [() => readArea(cv, W * 0.3, H * 0.62, W * 0.7, H * 0.17, false, 1300)] : [])
+    ]);
+    // 2) ganzes Foto (kleiner gerechnet = schneller), dunkle + helle Schrift gleichzeitig
+    if(!hit) hit = await race("Suche im ganzen Foto …", [
+      () => readArea(cv, 0, 0, W, H, false, 1600),
+      () => readArea(cv, 0, 0, W, H, true, 1600)
+    ]);
+    // 3) waagerechte Streifen – je 2 Lagen × 2 Schriftfarben parallel
+    const bands = quick ? [0.66, 0.58, 0.86] : [0.66, 0.58, 0.5, 0.42, 0.34, 0.86];
+    for(let i = 0; !hit && i < bands.length; i += 2){
+      const jobs = [];
+      for(const b of bands.slice(i, i + 2)){
+        const y = Math.max(0, H * b - H * 0.04), h = Math.min(H - y, H * 0.2);
+        jobs.push(() => readArea(cv, 0, y, W, h, false, 1700), () => readArea(cv, 0, y, W, h, true, 1700));
       }
-      // Yu-Gi-Oh!: Kürzel steht rechts unter dem Bild
-      if(!hit && YGO) hit = await tryAreaInv(cv, W * 0.35, H * 0.64, W * 0.65, H * 0.14, "Lese Yu-Gi-Oh!-Kürzel …", false);
+      hit = await race(`Suche Kürzel + Nummer … ${Math.min(i + 2, bands.length)}/${bands.length}`, jobs);
     }
-    // 1) ganzes Foto
-    if(!hit) hit = await tryArea(cv, 0, 0, W, H, "Suche Kürzel + Nummer im ganzen Foto …", { maxW: 2000, adaptive: true });
-    // 2) waagerechte Streifen – wo die Karte unten ihre Nummer hat (wahrscheinlichste Lagen zuerst)
-    // erst dunkle Schrift, dann helle Schrift (Vollbild-/Illustration-Rare-Karten: weiße Nummer auf dem Bild)
-    const bands = [0.74, 0.82, 0.66, 0.58, 0.5, 0.42, 0.34, 0.88];
-    for(const inv of [false, true]){
-      for(let i = 0; !hit && i < bands.length; i++){
-        const y = Math.max(0, H * bands[i] - H * 0.04), h = Math.min(H - y, H * 0.2);
-        hit = await tryAreaInv(cv, 0, y, W, h, `Suche Kürzel + Nummer${inv ? " (helle Schrift)" : ""} … ${i + 1}/${bands.length}`, inv);
-      }
-      if(hit) break;
-    }
-    // 3) Querformat / gedrehte Karte: 90° drehen und noch einmal (nicht beim Auto-Foto – da liegt die Karte gerade im Rahmen)
-    if(!hit && !(opts && opts.quick)){
-      for(const dir of [1, -1]){
-        const rc = document.createElement("canvas"); rc.width = H; rc.height = W;
-        const g = rc.getContext("2d"); g.translate(dir > 0 ? H : 0, dir > 0 ? 0 : W); g.rotate(dir * Math.PI / 2); g.drawImage(cv, 0, 0);
-        hit = await tryArea(rc, 0, 0, H, W, `Gedrehte Karte prüfen (${dir > 0 ? "rechts" : "links"}) …`, { maxW: 2000, adaptive: true });
-        if(hit) break;
-      }
+    // 4) Querformat / gedrehte Karte (nicht beim Auto-Foto – da liegt die Karte gerade im Rahmen)
+    if(!hit && !quick){
+      const rot = dir => { const rc = document.createElement("canvas"); rc.width = H; rc.height = W; const g = rc.getContext("2d"); g.translate(dir > 0 ? H : 0, dir > 0 ? 0 : W); g.rotate(dir * Math.PI / 2); g.drawImage(cv, 0, 0); return rc; };
+      const r1 = rot(1), r2 = rot(-1);
+      hit = await race("Gedrehte Karte prüfen …", [() => readArea(r1, 0, 0, H, W, false, 1600), () => readArea(r2, 0, 0, H, W, false, 1600)]);
     }
     if(!hit && weak) hit = weak;   // nur Nummer gelesen -> Auswahl/Bestätigung statt automatisch
     if(hit){
@@ -939,15 +962,8 @@ async function analyzePhoto(file, opts){
     }
     // 4) Kein Kürzel/keine Nummer: Kartenname lesen und in der Datenbank suchen
     step("Kein Kürzel gefunden – suche über den Kartennamen …");
-    await worker.setParameters({ tessedit_char_whitelist: FREE_WL });
-    let free = "";
-    try{
-      for(const inv of [false, true]){
-        const top = prepStrip(cv, 0, 0, W, H * 0.7, inv, 2000, true);
-        free += " " + ((await worker.recognize(top)).data.text || "");
-        if(namesInText(free).length) break;
-      }
-    } finally { await worker.setParameters({ tessedit_char_whitelist: WL }); }
+    const frees = await Promise.all([false, true].map(inv => ocr(prepStrip(cv, 0, 0, W, H * 0.7, inv, 1600, true), FREE_WL).catch(() => "")));
+    const free = frees.join(" ");
     const all = texts.join(" ") + " " + free;
     const nums = [...all.toUpperCase().matchAll(/\b([A-Z]{0,2}\d{1,3})\s*\/\s*([A-Z]{0,2}\d{2,3})\b/g)].map(m => m[1].replace(/^0+(?=\d)/, ""));
     const names = namesInText(free);
