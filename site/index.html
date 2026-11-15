@@ -50,6 +50,7 @@
   .chip{font:700 12.5px system-ui,sans-serif;padding:8px 11px;border-radius:11px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--muted);cursor:pointer}
   .chip.on{background:rgba(34,211,238,.14);border-color:rgba(34,211,238,.6);color:#fff}
   .btn{font:800 15px system-ui,sans-serif;border:0;border-radius:14px;padding:13px 16px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;justify-content:center;user-select:none}
+  .btn.big{padding:16px 26px;font-size:17px}
   .primary{background:var(--accent);color:#04131a;box-shadow:0 8px 26px rgba(34,211,238,.4)}
   .secondary{background:rgba(255,255,255,.04);color:var(--text);border:1.5px solid rgba(255,255,255,.2)}
   .small{padding:8px 11px;font-size:13px;border-radius:11px}
@@ -143,12 +144,16 @@
       <div class="zoomwrap" id="zoomWrap" hidden><span>🔍</span><input type="range" id="zoom" min="1" max="4" step="0.1" value="1.5"><b id="zoomVal">1.5×</b></div>
       <div class="camcover" id="camCover">
         <img src="cardgrab-logo-md.webp" alt="">
-        <p>Live-Erkennung direkt auf deinem Handy –<br>ohne Upload, ohne Konto.</p>
-        <button class="btn primary" id="startBtn">📷 Kamera starten</button>
+        <p>Foto machen – CardGrab findet die Karte.<br>Alles auf deinem Handy, ohne Upload.</p>
+        <label class="btn primary big" for="photoInput">📸 Foto machen</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+          <label class="btn secondary small" for="galleryInput">🖼️ Aus Galerie</label>
+          <button class="btn secondary small" id="startBtn">🎥 Live-Scan</button>
+        </div>
         <p id="ocrState" style="font-size:12px">Texterkennung wird geladen …</p>
       </div>
     </div>
-    <div class="status" id="status">Karte in den Rahmen halten. Unten müssen <b>Set-Kürzel und Nummer</b> lesbar sein (z. B. „PAR 040/182“ oder „OP05-119“).</div>
+    <div class="status" id="status"><b>📸 Foto machen</b>: Karte hell und gerade fotografieren – CardGrab sucht Set-Kürzel, Nummer und Namen im Bild. Mehrere Karten? „Aus Galerie“ und mehrere Fotos wählen.</div>
 
     <div class="row2">
       <span style="font-size:12.5px;color:var(--muted)">Sprache:</span>
@@ -157,7 +162,7 @@
         <button class="chip" data-lang="Englisch">EN</button>
         <button class="chip" data-lang="Japanisch">JP</button>
       </div>
-      <label class="btn secondary small" for="photoInput" style="margin-left:auto">🖼️ Foto</label>
+      <label class="btn secondary small" for="photoInput" style="margin-left:auto">📸 Foto</label>
     </div>
     <form class="manual" id="manualForm" autocomplete="off">
       <input id="manualInput" placeholder="Manuell: PAR 040 · 4/102 · OP05-119" enterkeyhint="search">
@@ -197,10 +202,11 @@
 
 <div class="bar"><div class="in">
   <div class="sum"><b id="barVal">0 €</b><small id="barCnt">Sammlung: 0 Karten</small></div>
-  <button class="btn primary" id="barScan">📷 Scannen</button>
+  <button class="btn primary" id="barScan">📸 Foto</button>
 </div></div>
 
 <input type="file" id="photoInput" class="vh" accept="image/*" capture="environment">
+<input type="file" id="galleryInput" class="vh" accept="image/*" multiple>
 <input type="file" id="importInput" class="vh" accept="application/json,.json">
 
 <script src="lib/tesseract.min.js"></script>

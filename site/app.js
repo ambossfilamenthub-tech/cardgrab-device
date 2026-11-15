@@ -293,8 +293,8 @@ const ocrReady = (async () => {
   }catch(e){ console.error(e); $("ocrState").textContent = "Texterkennung konnte nicht geladen werden – manuelle Eingabe nutzen."; return false; }
 })();
 // Bildausschnitt vorbereiten: Graustufen, Kontrast strecken, vergrößern
-function prepStrip(src, sx, sy, sw, sh, invert){
-  const scale = Math.min(3, 1600 / sw);
+function prepStrip(src, sx, sy, sw, sh, invert, maxW, adaptive){
+  const scale = Math.min(3, (maxW || 1600) / sw);
   const cv = document.createElement("canvas"); cv.width = Math.round(sw * scale); cv.height = Math.round(sh * scale);
   const g = cv.getContext("2d", { willReadFrequently: true });
   g.imageSmoothingQuality = "high"; g.drawImage(src, sx, sy, sw, sh, 0, 0, cv.width, cv.height);
@@ -302,14 +302,31 @@ function prepStrip(src, sx, sy, sw, sh, invert){
   let mn = 255, mx = 0; const L = new Uint8Array(d.length / 4);
   for(let i = 0, j = 0; i < d.length; i += 4, j++){ const v = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000; L[j] = v; if(v < mn) mn = v; if(v > mx) mx = v; }
   const k = 255 / Math.max(1, mx - mn);
-  for(let i = 0, j = 0; i < d.length; i += 4, j++){ let v = (L[j] - mn) * k; if(invert) v = 255 - v; d[i] = d[i + 1] = d[i + 2] = v; }
+  if(adaptive){
+    // lokale Schwelle: nur feine Kontraste (Schrift) werden schwarz, große Flächen (Bild, Tisch) weiß
+    const w = cv.width, h = cv.height, r = Math.max(8, Math.round(w / 130)), W1 = w + 1;
+    const ii = new Float64Array(W1 * (h + 1));
+    for(let y = 0; y < h; y++){ let row = 0; for(let x = 0; x < w; x++){ row += L[y * w + x]; ii[(y + 1) * W1 + x + 1] = ii[y * W1 + x + 1] + row; } }
+    for(let y = 0; y < h; y++){
+      const y0 = Math.max(0, y - r), y1 = Math.min(h, y + r + 1);
+      for(let x = 0; x < w; x++){
+        const x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1);
+        const sum = ii[y1 * W1 + x1] - ii[y0 * W1 + x1] - ii[y1 * W1 + x0] + ii[y0 * W1 + x0];
+        const mean = sum / ((y1 - y0) * (x1 - x0)), v = L[y * w + x];
+        let o = invert ? (v > mean * 1.15 + 6 ? 0 : 255) : (v < mean * 0.85 - 6 ? 0 : 255);
+        const i = (y * w + x) * 4; d[i] = d[i + 1] = d[i + 2] = o;
+      }
+    }
+  } else {
+    for(let i = 0, j = 0; i < d.length; i += 4, j++){ let v = (L[j] - mn) * k; if(invert) v = 255 - v; d[i] = d[i + 1] = d[i + 2] = v; }
+  }
   g.putImageData(im, 0, 0);
   return cv;
 }
-async function ocrRegion(src, sx, sy, sw, sh){
+async function ocrRegion(src, sx, sy, sw, sh, opts){
   let best = null, txt = "";
-  for(const inv of [false, true]){
-    const cv = prepStrip(src, sx, sy, sw, sh, inv);
+  for(const inv of (opts && opts.noInvert) ? [false] : [false, true]){
+    const cv = prepStrip(src, sx, sy, sw, sh, inv, opts && opts.maxW, opts && opts.adaptive);
     const { data } = await worker.recognize(cv);
     txt = (data.text || "").replace(/\s+/g, " ").trim();
     best = parseRead(txt);
@@ -406,7 +423,7 @@ async function startCam(nextCam){
 }
 $("startBtn").onclick = () => startCam();
 $("camBtn").onclick = e => { e.stopPropagation(); startCam(true); };
-$("barScan").onclick = () => { showTab("scan"); window.scrollTo({ top: 0, behavior: "smooth" }); if(!stream) startCam(); };
+$("barScan").onclick = () => $("photoInput").click();
 document.addEventListener("visibilitychange", () => { if(document.hidden && stream){ stream.getTracks().forEach(t => t.stop()); stream = null; $("camCover").hidden = false; } });
 
 async function loop(){
@@ -449,23 +466,134 @@ function cardThumb(src, x, y, w, h){
   return c.toDataURL("image/jpeg", 0.7);
 }
 
-// ---------------- Foto statt Live ----------------
-$("photoInput").onchange = async e => {
-  const f = e.target.files[0]; e.target.value = ""; if(!f) return;
-  setStatus("Foto wird gelesen …");
-  const img = await createImageBitmap(f);
-  await ocrReady; if(!worker){ setStatus("Texterkennung nicht verfügbar – bitte manuell eingeben."); return; }
-  const cv = document.createElement("canvas"); cv.width = img.width; cv.height = img.height; cv.getContext("2d").drawImage(img, 0, 0);
-  // ganze Karte formatfüllend angenommen: unteren Bereich in Stufen lesen
-  let hit = null;
-  for(const [a, b] of [[0.84, 0.16], [0.78, 0.22], [0.6, 0.4]]){
-    const { r, text } = await ocrRegion(cv, 0, img.height * a, img.width, img.height * b);
-    $("readOut").textContent = text ? text.slice(0, 60) : "–";
-    if(r){ hit = r; break; }
+// ---------------- Foto-Analyse: Foto machen -> Karte im ganzen Bild suchen ----------------
+const WL = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/- ";
+const FREE_WL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÄÖÜäöüßéÉèàç0123456789/-.'’:& ";
+let NAMEIDX = null;   // normierter Kartenname -> Fundstellen
+function nameIndex(){
+  if(NAMEIDX) return NAMEIDX;
+  NAMEIDX = new Map();
+  const add = (k, v) => { if(k.length < 4) return; if(!NAMEIDX.has(k)) NAMEIDX.set(k, []); NAMEIDX.get(k).push(v); };
+  if(CDB) for(const st of CDB.sets.values()){ const m = CDB.cards.get(st.id); if(m) for(const e of m.values()){ add(nrm(e[2]), { kind: "pk", st, e }); if(e[3] && nrm(e[3]) !== nrm(e[2])) add(nrm(e[3]), { kind: "pk", st, e, de: true }); } }
+  if(OPDB) for(const [id, e] of Object.entries(OPDB.cards)) add(nrm(e[0]), { kind: "op", id });
+  return NAMEIDX;
+}
+// Kartennamen im Freitext finden (1–3 Wörter am Stück)
+function namesInText(text){
+  const idx = nameIndex(), words = String(text || "").split(/[^A-Za-zÀ-ÿ0-9.'’-]+/).filter(w => w.length >= 2);
+  const found = new Map();
+  for(let i = 0; i < words.length; i++) for(let n = 3; n >= 1; n--){
+    const k = nrm(words.slice(i, i + n).join("")); if(k.length < 4) continue;
+    if(idx.has(k) && !found.has(k)) found.set(k, idx.get(k));
   }
-  if(!hit){ setStatus("Auf dem Foto wurden Kürzel und Nummer nicht erkannt. Karte formatfüllend fotografieren oder manuell eingeben."); return; }
-  const r = await handleRead(hit, cardThumb(cv, 0, 0, img.width, img.height));
-  if(r) setStatus("✓ Übernommen.");
+  return [...found.entries()].sort((a, b) => b[0].length - a[0].length);
+}
+function photoBox(thumb, text){
+  document.querySelectorAll("#results .card.latest").forEach(el => { el.classList.remove("latest"); el.classList.add("old"); });
+  const el = document.createElement("div"); el.className = "card latest";
+  el.innerHTML = `<div class="rowc">${thumb ? `<img class="thumb" src="${thumb}" alt="">` : ""}<div class="info"><h3>📸 Foto wird analysiert …</h3><div class="meta" id="anaStep">${esc(text || "")}</div></div></div>`;
+  $("results").prepend(el); el.scrollIntoView({ behavior: "smooth", block: "center" });
+  return el;
+}
+async function analyzePhoto(file){
+  showTab("scan");
+  let bmp;
+  try{ bmp = await createImageBitmap(file, { imageOrientation: "from-image" }); }catch{ bmp = await createImageBitmap(file); }
+  // auf max. 2000 px (lange Seite) verkleinern – reicht für die kleine Schrift und bleibt schnell
+  const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+  const cv = document.createElement("canvas"); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+  cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height);
+  const W = cv.width, H = cv.height;
+  // Vorschaubild: Bildmitte im Kartenformat
+  const tw = Math.min(W, H * 63 / 88), th = tw * 88 / 63;
+  const thumb = cardThumb(cv, (W - tw) / 2, (H - th) / 2, tw, th);
+  const box = photoBox(thumb, "Texterkennung startet …");
+  const step = t => { const m = box.querySelector("#anaStep"); if(m) m.textContent = t; };
+  await Promise.all([ocrReady, cardDbReady, opDbReady]);
+  if(!worker){ box.remove(); setStatus("Texterkennung nicht verfügbar – bitte manuell eingeben."); return; }
+  const wasPaused = paused; paused = true;
+  const texts = [];
+  const tryArea = async (src, x, y, w, h, label, opts) => {
+    step(label);
+    const { r, text } = await ocrRegion(src, x, y, w, h, opts);
+    texts.push(text); $("readOut").textContent = text ? text.slice(0, 60) : "–";
+    if(r && candidates(r).length) return r;
+    return null;
+  };
+  let hit = null;
+  try{
+    // 1) ganzes Foto
+    hit = await tryArea(cv, 0, 0, W, H, "Suche Kürzel + Nummer im ganzen Foto …", { maxW: 2000, adaptive: true });
+    // 2) waagerechte Streifen – wo die Karte unten ihre Nummer hat (wahrscheinlichste Lagen zuerst)
+    const bands = [0.74, 0.82, 0.66, 0.58, 0.5, 0.42, 0.34, 0.88];
+    for(let i = 0; !hit && i < bands.length; i++){
+      const y = Math.max(0, H * bands[i] - H * 0.04), h = Math.min(H - y, H * 0.2);
+      hit = await tryArea(cv, 0, y, W, h, `Suche Kürzel + Nummer … ${i + 1}/${bands.length}`, { maxW: 2400, noInvert: true, adaptive: true });
+    }
+    // 3) Querformat / gedrehte Karte: 90° drehen und noch einmal
+    if(!hit){
+      for(const dir of [1, -1]){
+        const rc = document.createElement("canvas"); rc.width = H; rc.height = W;
+        const g = rc.getContext("2d"); g.translate(dir > 0 ? H : 0, dir > 0 ? 0 : W); g.rotate(dir * Math.PI / 2); g.drawImage(cv, 0, 0);
+        hit = await tryArea(rc, 0, 0, H, W, `Gedrehte Karte prüfen (${dir > 0 ? "rechts" : "links"}) …`, { maxW: 2000, adaptive: true });
+        if(hit) break;
+      }
+    }
+    if(hit){
+      box.remove(); paused = wasPaused;
+      if(await handleRead(hit, thumb)) setStatus("✓ Karte aus dem Foto übernommen.");
+      return;
+    }
+    // 4) Kein Kürzel/keine Nummer: Kartenname lesen und in der Datenbank suchen
+    step("Kein Kürzel gefunden – suche über den Kartennamen …");
+    await worker.setParameters({ tessedit_char_whitelist: FREE_WL });
+    let free = "";
+    try{
+      const top = prepStrip(cv, 0, 0, W, H * 0.7, false, 2000, true);
+      free = (await worker.recognize(top)).data.text || "";
+    } finally { await worker.setParameters({ tessedit_char_whitelist: WL }); }
+    const all = texts.join(" ") + " " + free;
+    const nums = [...all.toUpperCase().matchAll(/\b([A-Z]{0,2}\d{1,3})\s*\/\s*([A-Z]{0,2}\d{2,3})\b/g)].map(m => m[1].replace(/^0+(?=\d)/, ""));
+    const names = namesInText(free);
+    const lang = LANG;
+    const list = [];
+    for(const [, hits] of names.slice(0, 3)){
+      for(const h of hits){
+        if(list.length > 60) break;
+        if(h.kind === "op"){
+          const c = opApply({ game: "onepiece", number: h.id, language: lang === "Japanisch" ? "Japanisch" : "Englisch" });
+          if(c.op) list.push({ c, label: c.name, sub: `${c.op.id} · ${c.set}`, score: 1 });
+        } else {
+          const lid = String(h.e[0]);
+          const numOk = nums.some(n => lidVariants(n).includes(lid.toUpperCase()));
+          if(nums.length && !numOk) continue;
+          const c = applyDb({ set_code: h.st.code || "", set: h.st.en, set_en: h.st.en, name: h.e[2], name_en: h.e[2], number: `${lid}/${h.st.total || ""}`, language: lang });
+          if(c.db) list.push({ c: finishPk(c, lang), label: lang === "Deutsch" && h.e[3] ? h.e[3] : h.e[2], sub: `${h.st.code ? h.st.code + " · " : ""}${lang === "Deutsch" ? h.st.de || h.st.en : h.st.en} · Nr. ${lid}`, score: numOk ? 2 : 1 });
+        }
+      }
+    }
+    box.remove(); paused = wasPaused;
+    if(!list.length){
+      setStatus("Auf dem Foto wurde keine Karte erkannt. Tipp: Karte gerade, hell und ohne Spiegelung fotografieren – Nummer unten muss lesbar sein. Oder manuell eingeben (z. B. „PAR 040“).");
+      toast("Karte nicht erkannt"); return;
+    }
+    list.sort((a, b) => b.score - a.score);
+    paused = true;
+    const pick = list.length === 1 ? list[0] : await chooseFrom(list, thumb, `Kartenname erkannt: „${list[0].label}“${nums.length ? "" : " – die Nummer war nicht lesbar"}. Welche Ausgabe ist es?`);
+    paused = wasPaused;
+    if(pick){ addCard(pick.c, thumb); setStatus("✓ Karte über den Namen gefunden."); }
+  }catch(e){
+    console.error(e); box.remove(); paused = wasPaused;
+    setStatus("Fehler bei der Analyse – bitte noch einmal versuchen.");
+  }
+}
+$("photoInput").onchange = async e => {
+  const files = [...e.target.files]; e.target.value = "";
+  for(const f of files) await analyzePhoto(f);
+};
+$("galleryInput").onchange = async e => {
+  const files = [...e.target.files]; e.target.value = "";
+  for(const f of files) await analyzePhoto(f);
 };
 
 // ---------------- Manuelle Eingabe ----------------
