@@ -49,10 +49,10 @@ function productUrl(c, verOverride){
   const ver = v ? "-V" + v : "";
   const known = SETS.find(x => x[0] && x[0] === code && x[4]);
   const expSlug = (known && known[4]) || c.cm_exp_slug || slug(exp);
-  return `https://www.cardmarket.com/de/Pokemon/Products/Singles/${expSlug}/${slug(c.name_en || c.name)}${ver}-${code}${nr}?language=${langId(c)}&minCondition=2&sellerCountry=7`;
+  return `https://www.cardmarket.com/de/Pokemon/Products/Singles/${expSlug}/${slug(c.name_en || c.name)}${ver}-${code}${nr}?${CMQ(c)}`;
 }
 // Cardmarket-Filter: Sprache der Karte, mind. Near Mint, Verkäufer aus Deutschland
-const CMQ = c => `language=${langId(c)}&minCondition=2&sellerCountry=7`;
+const CMQ = c => `language=${langId(c)}&minCondition=${({ MT: 1, NM: 2, EX: 3, GD: 4, LP: 5, PL: 6, PO: 7 })[c.cond] || 2}&sellerCountry=7`;
 function links(c){
   if(isOP(c)) return opLinks(c);
   if(!c.db && CDB) applyDb(c);
@@ -76,7 +76,7 @@ function links(c){
     }
     if(!h.nver || h.nver < 2){
       return `<div class="links">
-        <a class="cm" href="${dbUrl(c, false, 0)}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (NM · DE) ↗</a>
+        <a class="cm" href="${dbUrl(c, false, 0)}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (${esc(c.cond || "NM")} · DE) ↗</a>
         <a class="alt" href="${search}" target="_blank" rel="noopener">Suche ${esc(h.code + " " + lid)} ↗</a>${ebay}${del}</div>`;
     }
     // Die Karte gibt es im Set mehrfach (z. B. normale Karte + Illustration Rare). Cardmarket nummeriert diese
@@ -93,7 +93,7 @@ function links(c){
   const alt = direct ? productUrl(c, v ? "" : "1") : "";
   const search = S + encodeURIComponent(code || c.cm_name || c.name_en || c.name || "");
   return `<div class="links">
-    <a class="cm" href="${direct || search}" target="_blank" rel="noopener">${direct ? "Karte auf Cardmarket öffnen (NM · DE)" : "Auf Cardmarket suchen"} ↗</a>
+    <a class="cm" href="${direct || search}" target="_blank" rel="noopener">${direct ? `Karte auf Cardmarket öffnen (${esc(c.cond || "NM")} · DE)` : "Auf Cardmarket suchen"} ↗</a>
     ${alt ? `<a class="alt" href="${alt}" target="_blank" rel="noopener">„Ungültiges Produkt“? Andere Version ↗</a>` : ""}
     <a class="alt" href="${search}" target="_blank" rel="noopener">Suche ↗</a>${ebay}${del}</div>`;
 }
@@ -229,7 +229,7 @@ function dbUrl(c, flipVersion, fixedVer){
   let ver = fixedVer !== undefined ? fixedVer : h.ver; if(flipVersion) ver = ver ? 0 : 1;
   // Cardmarket schreibt Nummern ab Schwert & Schild dreistellig (PAR040, M24003)
   const lid = /^\d+$/.test(h.lid) && /^(sv|me|swsh|30th|202[1-9])/.test(h.sid || "") ? h.lid.padStart(3, "0") : h.lid;
-  return `https://www.cardmarket.com/de/Pokemon/Products/Singles/${slug(h.setEn)}/${slug(h.en)}${ver ? "-V" + ver : ""}-${h.code}${lid}?language=${langId(c)}&minCondition=2&sellerCountry=7`;
+  return `https://www.cardmarket.com/de/Pokemon/Products/Singles/${slug(h.setEn)}/${slug(h.en)}${ver ? "-V" + ver : ""}-${h.code}${lid}?${CMQ(c)}`;
 }
 
 
@@ -307,7 +307,7 @@ function opLinks(c){
   const ebay = `<a class="alt" href="https://www.ebay.de/sch/i.html?_nkw=${encodeURIComponent([id, c.name_en || c.name, "one piece"].filter(Boolean).join(" "))}&LH_Sold=1&LH_Complete=1" target="_blank" rel="noopener">eBay verkauft ↗</a>`;
   const del = `<button data-del="${esc(c.id)}">Entfernen</button>`;
   return `<div class="links">
-    <a class="cm" href="${direct || search}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (DE · ${lang} · NM) ↗</a>
+    <a class="cm" href="${direct || search}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (DE · ${lang} · ${esc(c.cond || "NM")}) ↗</a>
     ${direct ? `<a class="alt" href="${search}" target="_blank" rel="noopener">Falsche Seite? Suche ${esc(id)} ↗</a>` : ""}
     ${ebay}${del}</div>`;
 }

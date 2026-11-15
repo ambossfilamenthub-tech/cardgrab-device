@@ -94,7 +94,7 @@ function ygoLinks(c){
   }
   const ebay = `<a class="alt" href="https://www.ebay.de/sch/i.html?_nkw=${encodeURIComponent([c.number, c.name_en || c.name, "yugioh"].filter(Boolean).join(" "))}&LH_Sold=1&LH_Complete=1" target="_blank" rel="noopener">eBay verkauft ↗</a>`;
   return `<div class="links">
-    <a class="cm" href="${direct || search}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (DE · ${esc(YGO_LCODE[c.language] || "EN")} · NM) ↗</a>
+    <a class="cm" href="${direct || search}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (DE · ${esc(YGO_LCODE[c.language] || "EN")} · ${esc(c.cond || "NM")}) ↗</a>
     ${direct ? `<a class="alt" href="${search}" target="_blank" rel="noopener">Falsche Seite? Suche „${esc(c.name_en)}“ ↗</a>` : ""}
     ${ebay}<button data-del="${esc(c.id)}">Entfernen</button></div>`;
 }
