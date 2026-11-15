@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>CardGrab Device – Karten-Scanner</title>
+<meta name="theme-color" content="#0a0916">
+<meta name="description" content="Pokémon- und One-Piece-Karten mit der Handykamera erkennen und den Cardmarket-Preis sehen – alles auf dem Gerät.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+  :root{--bg:#0a0916;--panel:rgba(22,20,42,.82);--panel2:#1d1a36;--line:#2e2a52;--text:#f1efff;--muted:#a49fc7;--accent:#22d3ee;--accent2:#c084fc;--good:#3ddc97;--warn:#ffb347;--bad:#ff5c7a}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+  body::before{content:"";position:fixed;inset:0;z-index:-2;background:radial-gradient(60% 45% at 100% 0%,rgba(168,85,247,.36),transparent 70%),radial-gradient(55% 40% at 0% 100%,rgba(34,211,238,.2),transparent 70%),var(--bg)}
+  .wrap{max-width:560px;margin:0 auto;padding:0 14px 110px}
+  .top{position:sticky;top:0;z-index:30;margin:0 -14px;padding:calc(8px + env(safe-area-inset-top)) 14px 8px;display:flex;align-items:center;gap:10px;background:rgba(10,9,22,.78);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid rgba(255,255,255,.06)}
+  .top img{height:38px;width:auto}
+  .brand{font:800 18px/1.05 system-ui,sans-serif;letter-spacing:-.4px}
+  .brand span{background:linear-gradient(90deg,var(--accent2),var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .brand small{display:block;font:700 10px system-ui,sans-serif;letter-spacing:.9px;text-transform:uppercase;color:var(--accent)}
+  .pill{margin-left:auto;font:700 11px system-ui,sans-serif;color:var(--muted);border:1px solid var(--line);padding:5px 9px;border-radius:999px;white-space:nowrap}
+  .pill.ok{color:var(--good);border-color:rgba(61,220,151,.4)}
+  .tabs{display:flex;gap:6px;background:rgba(22,20,42,.7);border:1px solid var(--line);border-radius:16px;padding:5px;margin:12px 0}
+  .tabs button{flex:1;background:transparent;color:var(--muted);border:0;border-radius:12px;padding:10px;font:700 14px system-ui,sans-serif;cursor:pointer}
+  .tabs button.on{background:linear-gradient(135deg,rgba(192,132,252,.25),rgba(34,211,238,.18));color:#fff;box-shadow:inset 0 0 0 1px rgba(192,132,252,.45)}
+
+  .cam{position:relative;width:100%;aspect-ratio:3/4;max-height:62vh;border-radius:22px;overflow:hidden;background:#05040d;box-shadow:0 0 0 1px rgba(192,132,252,.35),0 18px 40px rgba(0,0,0,.45)}
+  .cam video,.cam canvas.still{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .frame{position:absolute;border-radius:14px;box-shadow:0 0 0 9999px rgba(5,4,13,.55);border:2px solid rgba(255,255,255,.75);transition:border-color .2s}
+  .frame.hit{border-color:var(--good);box-shadow:0 0 0 9999px rgba(5,4,13,.55),0 0 28px rgba(61,220,151,.6)}
+  .frame .strip{position:absolute;left:-2px;right:-2px;bottom:-2px;height:15%;border:2px dashed var(--accent);border-radius:0 0 14px 14px;background:rgba(34,211,238,.06)}
+  .frame .strip span{position:absolute;top:-22px;left:50%;transform:translateX(-50%);font:700 11px system-ui,sans-serif;color:var(--accent);white-space:nowrap;text-shadow:0 1px 4px #000}
+  .camstate{position:absolute;left:10px;right:10px;top:10px;display:flex;gap:8px;align-items:flex-start;justify-content:space-between}
+  .read{font:600 12px ui-monospace,Menlo,monospace;color:#cfe;background:rgba(0,0,0,.55);padding:5px 8px;border-radius:9px;max-width:70%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .iconbtn{background:rgba(0,0,0,.55);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:12px;padding:8px 10px;font:700 13px system-ui,sans-serif;cursor:pointer}
+  .iconbtn.on{background:var(--accent);color:#04131a}
+  .camcover{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;background:radial-gradient(60% 50% at 50% 30%,rgba(168,85,247,.25),transparent 70%),#0b0a1a}
+  .camcover img{width:62%;max-width:230px;filter:drop-shadow(0 14px 30px rgba(192,132,252,.45))}
+  .camcover[hidden]{display:none}
+  .camcover p{margin:0;color:var(--muted);font-size:14px;line-height:1.5}
+  .status{margin:10px 2px 0;font-size:13px;color:var(--muted);line-height:1.45;min-height:19px}
+  .status b{color:var(--text)}
+  .row2{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center}
+  .chips{display:flex;gap:6px}
+  .chip{font:700 12.5px system-ui,sans-serif;padding:8px 11px;border-radius:11px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--muted);cursor:pointer}
+  .chip.on{background:rgba(34,211,238,.14);border-color:rgba(34,211,238,.6);color:#fff}
+  .btn{font:800 15px system-ui,sans-serif;border:0;border-radius:14px;padding:13px 16px;cursor:pointer;display:inline-flex;align-items:center;gap:8px;justify-content:center;user-select:none}
+  .primary{background:var(--accent);color:#04131a;box-shadow:0 8px 26px rgba(34,211,238,.4)}
+  .secondary{background:rgba(255,255,255,.04);color:var(--text);border:1.5px solid rgba(255,255,255,.2)}
+  .small{padding:8px 11px;font-size:13px;border-radius:11px}
+  .manual{display:flex;gap:8px;margin-top:10px}
+  .manual input{flex:1;min-width:0;background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:11px 12px;font:15px system-ui,sans-serif;text-transform:uppercase}
+  .vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0);pointer-events:none}
+
+  .card{position:relative;margin-top:14px;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:14px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+  .card.latest{box-shadow:0 0 0 1.5px rgba(34,211,238,.7),0 12px 40px rgba(34,211,238,.16)}
+  .card.latest::after{content:"Neu gescannt";position:absolute;top:-9px;left:14px;font:800 10px system-ui,sans-serif;letter-spacing:.6px;text-transform:uppercase;background:var(--accent);color:#04131a;padding:3px 8px;border-radius:999px}
+  .card.old{padding:10px 12px;opacity:.85}
+  .card.old .thumb{width:40px;height:56px}
+  .card.old .prices,.card.old .vers,.card.old .links .alt,.card.old .links button,.card.old .links div,.card.old .note{display:none}
+  .card.old .links a.cm{font-size:12.5px;padding:8px}
+  .rowc{display:flex;gap:12px;align-items:flex-start}
+  .thumb{width:58px;height:81px;object-fit:cover;border-radius:8px;flex-shrink:0;background:#111;box-shadow:0 0 0 1px rgba(255,255,255,.08)}
+  .info{flex:1;min-width:0}
+  .card h3{margin:0;font:800 17px/1.25 system-ui,sans-serif}
+  .meta{color:var(--muted);font-size:12.5px;margin-top:3px;line-height:1.45}
+  .meta b{color:var(--text)}
+  .val{text-align:right;flex-shrink:0;min-width:86px}
+  .val .p{font:800 22px system-ui,sans-serif;background:linear-gradient(90deg,#9ff3ff,#d8b4fe);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .val .l{font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700}
+  .prices{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+  .prices div{background:rgba(10,9,22,.55);border:1px solid var(--line);border-radius:11px;padding:7px 8px;text-align:center}
+  .prices span{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:700}
+  .prices b{font-size:14.5px}
+  .vers{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+  .vers button{font:700 12px system-ui,sans-serif;padding:6px 9px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--muted);cursor:pointer}
+  .vers button.on{border-color:rgba(192,132,252,.7);color:#fff;background:rgba(192,132,252,.18)}
+  .note{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.45}
+  .links{display:flex;gap:6px;margin-top:11px;flex-wrap:wrap}
+  .links a,.links button{font:700 12.5px system-ui,sans-serif;padding:9px 11px;border-radius:11px;text-decoration:none;cursor:pointer}
+  .links a.cm{background:var(--accent);color:#04131a;flex:1 1 100%;text-align:center;font-size:14.5px;padding:12px}
+  .links a.alt{background:rgba(255,255,255,.04);color:var(--text);border:1px solid var(--line);flex:1;text-align:center}
+  .links button{background:transparent;color:var(--muted);border:1px solid var(--line)}
+
+  .sheet{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center}
+  .sheet[hidden]{display:none}
+  .sheet .in{width:100%;max-width:560px;max-height:75vh;overflow:auto;background:#141230;border-radius:22px 22px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom));border-top:1px solid rgba(192,132,252,.4)}
+  .sheet h4{margin:0 0 4px;font:800 17px system-ui,sans-serif}
+  .sheet p{margin:0 0 10px;color:var(--muted);font-size:13px}
+  .opt{display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:13px;padding:12px;margin-top:7px;font:600 14px system-ui,sans-serif;cursor:pointer}
+  .opt small{color:var(--muted);font-weight:500}
+
+  .stats{display:flex;gap:10px;margin-bottom:10px}
+  .stat{flex:1;background:linear-gradient(135deg,rgba(168,85,247,.28),rgba(34,211,238,.14));border:1px solid rgba(192,132,252,.4);border-radius:18px;padding:12px 14px}
+  .stat .l{font-size:10.5px;color:#d8b4fe;text-transform:uppercase;letter-spacing:.7px;font-weight:700}
+  .stat .v{font:800 24px system-ui,sans-serif}
+  .stat.gray{background:var(--panel);border-color:var(--line)} .stat.gray .l{color:var(--muted)}
+  .tools{display:flex;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+  .tools input,.tools select{background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px 12px;font:14px system-ui,sans-serif}
+  .tools input{flex:1;min-width:0}
+  .empty{color:var(--muted);font-size:14px;text-align:center;padding:26px 10px;line-height:1.5}
+  .hint{font-size:12px;color:var(--muted);line-height:1.5;margin-top:16px;padding:12px 14px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}
+  .toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);opacity:0;transition:.25s;z-index:60;background:#0f2a22;border:1px solid rgba(61,220,151,.6);color:#d6ffe9;padding:10px 14px;border-radius:14px;font:700 14px system-ui,sans-serif;max-width:92vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%)}
+  .bar{position:fixed;left:0;right:0;bottom:0;z-index:40;padding:10px 16px calc(10px + env(safe-area-inset-bottom));background:rgba(10,9,22,.86);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid rgba(192,132,252,.25)}
+  .bar .in{max-width:560px;margin:0 auto;display:flex;gap:10px;align-items:center}
+  .bar .sum{flex:1;min-width:0}
+  .bar .sum b{font:800 20px system-ui,sans-serif;display:block;background:linear-gradient(90deg,#9ff3ff,#d8b4fe);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .bar .sum small{color:var(--muted);font-size:11.5px}
+  footer{text-align:center;color:#6f6a96;font-size:11.5px;margin-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <img src="cardgrab-logo-sm.webp" alt="CardGrab" width="46" height="38">
+    <div class="brand">Card<span>Grab</span><small>Device</small></div>
+    <div class="pill" id="pricePill">Preise laden …</div>
+  </div>
+
+  <div class="tabs">
+    <button class="on" data-tab="scan">📷 Scannen</button>
+    <button data-tab="coll">🗂️ Sammlung <span id="tabCount"></span></button>
+  </div>
+
+  <section id="scan">
+    <div class="cam" id="cam">
+      <video id="video" playsinline muted></video>
+      <div class="frame" id="frame"><div class="strip"><span>Kürzel + Nummer hier</span></div></div>
+      <div class="camstate">
+        <div class="read" id="readOut">–</div>
+        <button class="iconbtn" id="torchBtn" hidden>🔦</button>
+      </div>
+      <div class="camcover" id="camCover">
+        <img src="cardgrab-logo-md.webp" alt="">
+        <p>Live-Erkennung direkt auf deinem Handy –<br>ohne Upload, ohne Konto.</p>
+        <button class="btn primary" id="startBtn">📷 Kamera starten</button>
+        <p id="ocrState" style="font-size:12px">Texterkennung wird geladen …</p>
+      </div>
+    </div>
+    <div class="status" id="status">Karte in den Rahmen halten. Unten müssen <b>Set-Kürzel und Nummer</b> lesbar sein (z. B. „PAR 040/182“ oder „OP05-119“).</div>
+
+    <div class="row2">
+      <span style="font-size:12.5px;color:var(--muted)">Sprache:</span>
+      <div class="chips" id="langChips">
+        <button class="chip on" data-lang="Deutsch">DE</button>
+        <button class="chip" data-lang="Englisch">EN</button>
+        <button class="chip" data-lang="Japanisch">JP</button>
+      </div>
+      <label class="btn secondary small" for="photoInput" style="margin-left:auto">🖼️ Foto</label>
+    </div>
+    <form class="manual" id="manualForm" autocomplete="off">
+      <input id="manualInput" placeholder="Manuell: PAR 040 · 4/102 · OP05-119" enterkeyhint="search">
+      <button class="btn secondary small" type="submit">Suchen</button>
+    </form>
+
+    <div id="results"></div>
+  </section>
+
+  <section id="coll" hidden>
+    <div class="stats">
+      <div class="stat"><div class="l">Sammlungswert (Trend)</div><div class="v" id="collVal">0 €</div></div>
+      <div class="stat gray"><div class="l">Karten</div><div class="v" id="collCnt">0</div></div>
+    </div>
+    <div class="tools">
+      <input id="search" placeholder="Suchen: Name, Set, Nummer …">
+      <select id="sort"><option value="new">Neueste</option><option value="val">Wert ↓</option><option value="name">Name A–Z</option><option value="set">Set</option></select>
+    </div>
+    <div class="tools">
+      <button class="btn secondary small" id="exportBtn">⬇️ Sicherung speichern</button>
+      <label class="btn secondary small" for="importInput">⬆️ Sicherung laden</label>
+    </div>
+    <div id="collList"></div>
+  </section>
+
+  <div class="hint"><b>So funktioniert's:</b> Die Erkennung läuft komplett auf deinem Handy: Die Kamera liest Set-Kürzel und Nummer und sucht die Karte in der eingebauten Datenbank (alle Pokémon-Sets EN/DE, One Piece EN/JP). Die Preise stammen aus der offiziellen Cardmarket-Preisliste, die jeden Morgen neu geladen wird: <b>Trend</b>, <b>ab</b> (günstigstes Angebot insgesamt) und <b>30-Tage-Ø</b>. Für den günstigsten Near-Mint-Preis von Verkäufern aus Deutschland in deiner Sprache tippe auf den Cardmarket-Button. Deine Sammlung bleibt nur auf diesem Gerät – nutze „Sicherung speichern“ als Backup.</div>
+  <footer>CardGrab Device · Grab your cards · ein Teil von CappyGrab</footer>
+</div>
+
+<div class="sheet" id="sheet" hidden><div class="in" id="sheetIn"></div></div>
+<div class="toast" id="toast"></div>
+
+<div class="bar"><div class="in">
+  <div class="sum"><b id="barVal">0 €</b><small id="barCnt">Sammlung: 0 Karten</small></div>
+  <button class="btn primary" id="barScan">📷 Scannen</button>
+</div></div>
+
+<input type="file" id="photoInput" class="vh" accept="image/*" capture="environment">
+<input type="file" id="importInput" class="vh" accept="application/json,.json">
+
+<script src="lib/tesseract.min.js"></script>
+<script src="lib/cards.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
