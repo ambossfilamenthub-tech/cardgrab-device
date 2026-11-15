@@ -173,14 +173,25 @@ function renderColl(){
   else if(so === "set") l.sort((a, b) => String(a.set).localeCompare(String(b.set), "de") || String(a.number).localeCompare(String(b.number), "de", { numeric: true }));
   else l.sort((a, b) => b.t - a.t);
   renderInsights();
+  LAST_LIST = l;
   $("collList").innerHTML = l.length ? l.map(c => cardHTML(c, "old")).join("") : `<div class="empty">${coll.length ? "Keine Treffer für diesen Filter." : "Noch keine Karten. Scanne deine erste Karte!"}</div>`;
   if(typeof updSelBar === "function" && SELMODE) updSelBar();
 }
+var LAST_LIST = [];
 $("search").oninput = renderColl; $("sort").onchange = renderColl;
 $("csvBtn").onclick = () => { csvExport(); try{ localStorage.setItem("cgd-lastbackup", Date.now()); }catch{} renderColl(); };
-$("exportBtn").onclick = () => {
+$("exportBtn").onclick = async () => {
   const blob = new Blob([JSON.stringify({ app: "CardGrab Device", v: 1, date: new Date().toISOString(), cards: coll.map(persistable) })], { type: "application/json" });
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `cardgrab-sammlung-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+  const fname = `cardgrab-sammlung-${new Date().toISOString().slice(0, 10)}.json`;
+  // Handy: Teilen-Menü (z. B. direkt in Google Drive, Dateien oder per Mail an sich selbst)
+  try{
+    const f = new File([blob], fname, { type: "application/json" });
+    if(navigator.canShare && navigator.canShare({ files: [f] }) && matchMedia("(pointer:coarse)").matches){
+      await navigator.share({ files: [f], title: "CardGrab Sicherung", text: "Sicherung meiner CardGrab-Sammlung" });
+      try{ localStorage.setItem("cgd-lastbackup", Date.now()); }catch{} setTimeout(renderColl, 300); toast("💾 Sicherung gespeichert"); return;
+    }
+  }catch(e){ if(e && e.name === "AbortError") return; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = fname; a.click();
   try{ localStorage.setItem("cgd-lastbackup", Date.now()); }catch{} setTimeout(renderColl, 300);
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 };
@@ -201,7 +212,7 @@ function sanitizeCard(x){
   };
   const id = str(x.id, 40); if(!id || !/^[\w-]+$/.test(id)) return null;
   const c = { id };
-  for(const k of ["game", "name", "name_en", "name_jp", "number", "set", "set_en", "set_code", "language", "rarity", "cond", "cm_name", "cm_version", "cm_expansion", "cm_exp_slug", "op_effect_de", "op_trigger_de", "folder"]) if(str(x[k], 2000) !== undefined) c[k] = str(x[k], 2000);
+  for(const k of ["game", "name", "name_en", "name_jp", "number", "set", "set_en", "set_code", "language", "rarity", "cond", "cm_name", "cm_version", "cm_expansion", "cm_exp_slug", "op_effect_de", "op_trigger_de", "folder", "grade"]) if(str(x[k], 2000) !== undefined) c[k] = str(x[k], 2000);
   for(const [k, lo, hi] of [["t", 0, 1e14], ["vi", 0, 50], ["qty", 1, 9999], ["buy", 0, 1e6], ["real", 0, 1e6], ["realAt", 0, 1e14]]) if(numv(x[k], lo, hi) !== undefined) c[k] = numv(x[k], lo, hi);
   if(x.rh === true) c.rh = true;
   if(x.vAuto) c.vAuto = 1;
@@ -265,7 +276,7 @@ function cardHTML(c, mode){
       ${c.real > 0 ? `<small>✓ gilt als Wert · eingetragen ${new Date(c.realAt || Date.now()).toLocaleDateString("de-DE")}</small>` : ""}</div>
     <div class="speak"><button class="btn secondary small" data-say="${esc(c.id)}">${speakingId === c.id ? "⏹️ Stopp" : "🔊 Vorlesen"}</button><button class="btn secondary small" data-view="${esc(c.id)}">📄 Kartentext</button></div>
     <div class="facts" data-facts="${esc(c.id)}" hidden></div>
-    <div class="editrow"><button data-edit="${esc(c.id)}">✏️ Bearbeiten</button>${c.folder ? `<span class="fold">📁 ${esc(c.folder)}</span>` : ""}</div>
+    <div class="editrow"><button data-edit="${esc(c.id)}">✏️ Bearbeiten</button>${c.grade ? `<span class="fold grade">🏅 ${esc(c.grade)}</span>` : ""}${c.folder ? `<span class="fold">📁 ${esc(c.folder)}</span>` : ""}</div>
     ${c.ygo ? ygoLinks(c) : links(c)}
   </div>`;
 }
@@ -655,6 +666,8 @@ async function askPersist(){
 }
 function addCard(c, thumb){
   askPersist();
+  if(typeof applyLearned === "function") applyLearned(c);
+  if(typeof BATCH !== "undefined" && BATCH) BATCH.ok++;
   // gleiche Karte (gleiche Sprache) schon in der Sammlung -> Anzahl erhöhen
   const same = coll.find(x => identity(x) === identity(c));
   if(same){
@@ -672,6 +685,7 @@ function addCard(c, thumb){
   c.t = Date.now(); c.thumb = thumb || ""; c.vi = 0;
   attachPrice(c);
   coll.unshift(c); saveCard(c); refreshTotals();
+  if(typeof backupCheck === "function") backupCheck();
   document.querySelectorAll("#results .card.latest").forEach(el => { el.classList.remove("latest"); el.classList.add("old"); });
   const t = document.createElement("div"); t.innerHTML = cardHTML(c, "latest");
   $("results").prepend(t.firstElementChild);
@@ -706,6 +720,7 @@ function inlinePick(list, thumb, why){
 // Nicht erkannt: Karte bleibt in der Liste mit "Nochmal" / "Eingeben"
 const FAILED = new Map();
 function failCard(src, thumb, why){
+  if(typeof BATCH !== "undefined" && BATCH) BATCH.fail++;
   const id = "f" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   FAILED.set(id, src);
   const el = document.createElement("div"); el.className = "card pick fail"; el.dataset.fail = id;
@@ -1027,8 +1042,8 @@ const shotQ = []; let qRunning = false;
 function queueInfo(){ const n = shotQ.length + (qRunning ? 1 : 0); return n ? ` · ${n} in Analyse` : ""; }
 async function runQueue(){
   if(qRunning) return; qRunning = true;
-  try{ while(shotQ.length){ const cv = shotQ.shift(); try{ await analyzePhoto(cv, { keepCam: true, quick: true }); }catch(e){ console.warn(e); } } }
-  finally{ qRunning = false; }
+  try{ while(shotQ.length){ const it = shotQ.shift(), cv = it.cv || it; try{ await analyzePhoto(cv, it.opts || { keepCam: true, quick: true }); }catch(e){ console.warn(e); } } }
+  finally{ qRunning = false; if(typeof batchDone === "function") batchDone(); }
 }
 async function autoShot(v, X, Y, Wd, Hd, sharp){
   busy = true; armed = false; lastShotSharp = sharp; lastShotAt = Date.now(); steady = 0;
@@ -1281,7 +1296,8 @@ $("binderInput").onchange = async e => {
     if(!isEmptyCell(c)) cells.push(c);
   }
   setStatus(`📒 ${cells.length} Karte${cells.length === 1 ? "" : "n"} auf der Seite gefunden – werden nacheinander erkannt …`);
-  for(const c of cells) shotQ.push(c);
+  if(typeof batchStart === "function") batchStart(cells.length);
+  for(const c of cells) shotQ.push({ cv: c, opts: { keepCam: true } });   // jedes Fach wird zusätzlich gerade ausgeschnitten
   runQueue();
 };
 // leeres Fach: kaum Struktur im Bild
@@ -1345,7 +1361,7 @@ Promise.all([collReady, pricesReady]).then(async () => {
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
 // ---------------- Update-Knopf ----------------
-const APP_FILES = ["./", "index.html", "app.js", "lib/cards.js", "lib/ygo.js", "lib/collection.js", "lib/sounds.js", "lib/cardfind.js", "lib/manage.js", "sw.js", "manifest.webmanifest", "version.json"];
+const APP_FILES = ["./", "index.html", "app.js", "lib/cards.js", "lib/ygo.js", "lib/collection.js", "lib/sounds.js", "lib/cardfind.js", "lib/manage.js", "lib/extras.js", "sw.js", "manifest.webmanifest", "version.json"];
 const getVer = () => { try{ return localStorage.getItem("cgd-ver") || ""; }catch{ return ""; } };
 const setVer = v => { try{ localStorage.setItem("cgd-ver", v); }catch{} };
 async function latestVersion(){

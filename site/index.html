@@ -53,6 +53,26 @@
   .pickl{max-height:55vh;overflow:auto}
   .toast.act{display:flex;gap:10px;align-items:center}
   .tbtn{background:#d6ffe9;color:#0f2a22;border:0;border-radius:10px;padding:6px 10px;font:800 13px system-ui,sans-serif}
+  .cardsonly[hidden],#extraView[hidden],.selbar[hidden]{display:none!important}
+  .segs{display:flex;gap:6px;margin:10px 0 4px}
+  .segs button{flex:1;background:rgba(255,255,255,.05);border:1px solid var(--line);color:var(--muted);border-radius:12px;padding:9px 4px;font:700 13px system-ui,sans-serif}
+  .segs button.on{color:var(--text);border-color:var(--accent);background:rgba(34,211,238,.1)}
+  #wishCnt{font-size:11px;color:var(--accent)}
+  .setrow{display:grid;grid-template-columns:1fr auto;gap:4px 10px;width:100%;text-align:left;background:var(--panel);border:1px solid var(--line);color:var(--text);border-radius:13px;padding:11px 12px;margin-top:7px;font:600 14px system-ui,sans-serif}
+  .setrow .sc{color:var(--muted)} .setrow .sc b{color:var(--text)} .setrow small{color:var(--accent)}
+  .setrow .bar{grid-column:1/-1;height:6px;border-radius:4px;background:rgba(255,255,255,.08);overflow:hidden}
+  .setrow .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#3ddc97)}
+  .missrow{display:flex;gap:8px;align-items:center;padding:9px 2px;border-bottom:1px solid var(--line);font-size:13.5px}
+  .missrow>span:first-child{flex:1;min-width:0} .missrow small{color:var(--muted)} .missrow .mp{font-weight:800;white-space:nowrap}
+  .mbtn{background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:7px 9px;font:700 12.5px system-ui,sans-serif;text-decoration:none;white-space:nowrap}
+  .wishrow{display:grid;grid-template-columns:1fr auto;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:11px 12px;margin-top:8px}
+  .wishrow.hit{border-color:#3ddc97;box-shadow:0 0 0 1px rgba(61,220,151,.35)}
+  .wishrow .wi small{display:block;color:var(--muted);font-size:12px;margin-top:2px} .wishrow .wp{text-align:right} .wishrow .wp small{display:block;font-size:12px}
+  .wishrow .wt{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
+  .wishrow .wt input{width:80px;background:rgba(10,9,22,.6);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:6px 8px;font:600 14px system-ui,sans-serif}
+  .wishrow .wa{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+
+  .fold.grade{color:#ffd166}
   .quadov{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
   .cam video,.cam canvas.still{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
   .frame{position:absolute;border-radius:14px;box-shadow:0 0 0 9999px rgba(5,4,13,.55);border:2px solid rgba(255,255,255,.75);transition:border-color .2s}
@@ -304,11 +324,12 @@
       <div class="stat gray"><div class="l">Karten</div><div class="v" id="collCnt">0</div></div>
     </div>
     <div class="insights" id="insights"></div>
-    <div class="tools">
+    <div class="segs"><button data-view="cards" class="on">🃏 Karten</button><button data-view="sets">📚 Sets</button><button data-view="wish">⭐ Wunschliste <span id="wishCnt"></span></button></div>
+    <div class="tools cardsonly">
       <input id="search" placeholder="Suchen: Name, Set, Nummer …">
       <select id="sort"><option value="new">Neueste</option><option value="val">Wert ↓</option><option value="gain">Gewinn ↓</option><option value="name">Name A–Z</option><option value="set">Set</option></select>
     </div>
-    <div class="tools filters">
+    <div class="tools filters cardsonly">
       <select id="fGame"><option value="">🎴 Alle Spiele</option><option value="pokemon">Pokémon</option><option value="onepiece">One Piece</option><option value="yugioh">Yu-Gi-Oh!</option></select>
       <select id="fLang"><option value="">🌍 Alle Sprachen</option></select>
       <select id="fFolder"><option value="">📁 Alle Ordner</option></select>
@@ -318,12 +339,14 @@
       <b id="selCnt">0 ausgewählt</b>
       <button data-sel="all">Alle</button><button data-sel="folder">📁 Ordner</button><button data-sel="cond">🏷️ Zustand</button><button data-sel="lang">🌍 Sprache</button><button data-sel="del">🗑️ Löschen</button><button data-sel="done" class="done">Fertig</button>
     </div>
-    <div class="tools">
+    <div class="tools cardsonly">
+      <button class="btn secondary small" id="shareBtn">📤 Liste teilen (Bild)</button>
       <button class="btn secondary small" id="csvBtn">📊 Verkaufsliste (CSV)</button>
       <button class="btn secondary small" id="exportBtn">⬇️ Sicherung speichern</button>
       <label class="btn secondary small" for="importInput">⬆️ Sicherung laden</label>
     </div>
-    <div id="collList"></div>
+    <div id="collList" class="cardsonly"></div>
+    <div id="extraView" hidden></div>
   </section>
 
   <div class="hint"><b>So funktioniert's:</b> Die Erkennung läuft komplett auf deinem Handy: Die Kamera liest Set-Kürzel und Nummer und sucht die Karte in der eingebauten Datenbank (alle Pokémon-Sets EN/DE, One Piece EN/JP, Yu-Gi-Oh! alle Sets – die Sprache steht im Kürzel, z. B. LOB-<b>DE</b>005). Die Preise stammen aus der öffentlichen Cardmarket-Preisliste, die jeden Morgen neu geladen wird – unverbindliche Richtwerte ohne Gewähr. Als Wert zählt der <b>ab-Preis</b> (günstigstes Angebot aller Sprachen), dazu Trend und 30-Tage-Ø. Die Liste kennt keine Preise pro Sprache – trag den günstigsten Preis in deiner Sprache unter der Karte ein, dann zählt dieser. Der Cardmarket-Button öffnet die Karte gefiltert auf <b>Verkäufer aus Deutschland, Near Mint und die Sprache deiner Karte</b>. Deine Sammlung bleibt nur auf diesem Gerät – nutze „Sicherung speichern“ als Backup.</div>
@@ -355,6 +378,7 @@
 <script src="lib/sounds.js"></script>
 <script src="lib/cardfind.js"></script>
 <script src="lib/manage.js"></script>
+<script src="lib/extras.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
