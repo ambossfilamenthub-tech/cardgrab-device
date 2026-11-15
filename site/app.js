@@ -1160,27 +1160,45 @@ function isEmptyCell(c){
 }
 
 // ---------------- Manuelle Eingabe ----------------
+// Rückmeldung direkt unter dem Suchfeld (die Statuszeile oben ist auf dem Handy oft nicht im Bild)
+function manualMsg(html, ok){
+  let el = $("manualMsg");
+  if(!el){ el = document.createElement("div"); el.id = "manualMsg"; $("manualForm").after(el); }
+  el.className = "mmsg " + (ok ? "ok" : "bad"); el.innerHTML = html; el.hidden = !html;
+}
+function showNewest(){ const el = document.querySelector("#results > .card"); if(el) el.scrollIntoView({ behavior: "smooth", block: "center" }); }
 $("manualForm").onsubmit = async e => {
   e.preventDefault();
-  const q = $("manualInput").value.trim(); if(!q) return;
-  await Promise.all([cardDbReady, opDbReady, ygoDbReady]);
-  let r = parseRead(q);
-  if(!r){ const m = q.toUpperCase().match(/^([A-Z0-9]{2,5})\s*([A-Z]{0,2}\d{1,3})$/); if(m && knownCodes().has(m[1])) r = { kind: "pk", code: m[1], number: m[2], lang: "", strong: true, key: "m" }; }
-  if(!r){
-    // Kartenname eingetippt (alle Spiele)
-    const names = namesInText(q);
-    const list = [];
-    for(const [, hits] of names.slice(0, 2)) for(const h of hits){
-      if(list.length > 40) break;
-      if(h.kind === "ygo") list.push(...ygoPrintsLabeled(h.pc, LANG));
-      else if(h.kind === "op"){ const c = opApply({ game: "onepiece", number: h.id, language: LANG === "Japanisch" ? "Japanisch" : "Englisch" }); if(c.op) list.push({ c, label: c.name, sub: `${c.op.id} · ${c.set}` }); }
-      else { const c = applyDb({ set_code: h.st.code || "", set: h.st.en, set_en: h.st.en, name: h.e[2], name_en: h.e[2], number: `${h.e[0]}/${h.st.total || ""}`, language: LANG }); if(c.db) list.push({ c: finishPk(c, LANG), label: LANG === "Deutsch" && h.e[3] ? h.e[3] : h.e[2], sub: `${h.st.code ? h.st.code + " · " : ""}${LANG === "Deutsch" ? h.st.de || h.st.en : h.st.en} · Nr. ${h.e[0]}` }); }
-    }
-    if(list.length){ inlinePick(list, "", `Name „${list[0].label}“ – welche Ausgabe?`); $("manualInput").value = ""; return; }
-    setStatus("Eingabe nicht erkannt. Beispiele: <b>PAR 040</b>, <b>4/102</b>, <b>OP05-119</b>, <b>LOB-DE005</b> oder ein Kartenname."); return;
-  }
-  if(await handleRead(r, "")){ $("manualInput").value = ""; setStatus("✓ Übernommen."); }
+  const q = $("manualInput").value.trim(); if(!q){ $("manualInput").focus(); return; }
+  $("manualInput").blur();
+  manualMsg("🔍 Suche …", true);
+  try{
+    await Promise.all([cardDbReady, opDbReady, ygoDbReady]);
+    let r = parseRead(q);
+    if(!r){ const m = q.toUpperCase().match(/^([A-Z0-9]{2,5})\s*([A-Z]{0,2}\d{1,3})$/); if(m && knownCodes().has(m[1])) r = { kind: "pk", code: m[1], number: m[2], lang: "", strong: true, key: "m" }; }
+    const byName = () => {
+      const list = [];
+      for(const [, hits] of namesInText(q).slice(0, 2)) for(const h of hits){
+        if(list.length > 40) break;
+        if(h.kind === "ygo") list.push(...ygoPrintsLabeled(h.pc, LANG));
+        else if(h.kind === "op"){ const c = opApply({ game: "onepiece", number: h.id, language: LANG === "Japanisch" ? "Japanisch" : "Englisch" }); if(c.op) list.push({ c, label: c.name, sub: `${c.op.id} · ${c.set}` }); }
+        else { const c = applyDb({ set_code: h.st.code || "", set: h.st.en, set_en: h.st.en, name: h.e[2], name_en: h.e[2], number: `${h.e[0]}/${h.st.total || ""}`, language: LANG }); if(c.db) list.push({ c: finishPk(c, LANG), label: LANG === "Deutsch" && h.e[3] ? h.e[3] : h.e[2], sub: `${h.st.code ? h.st.code + " · " : ""}${LANG === "Deutsch" ? h.st.de || h.st.en : h.st.en} · Nr. ${h.e[0]}` }); }
+      }
+      return list;
+    };
+    if(r && await handleRead(r, "")){ $("manualInput").value = ""; manualMsg(`✓ ${esc(coll[0] ? coll[0].name : "Karte")} übernommen`, true); setStatus("✓ Übernommen."); showNewest(); return; }
+    const list = byName();
+    if(list.length){ inlinePick(list, "", `„${list[0].label}“ – welche Ausgabe? (${list.length} gefunden)`); $("manualInput").value = ""; manualMsg(`${list.length} Treffer – tippe unten die richtige Ausgabe an`, true); showNewest(); return; }
+    const cm = "https://www.cardmarket.com/de/Pokemon/Products/Search?searchString=" + encodeURIComponent(q);
+    const sets = r && r.code && CDB ? (CDB.byCode.get(CODE_ALIAS[r.code] || r.code) || []) : [];
+    const maxNr = sets.length ? Math.max(...sets.map(x => x.total || 0)) : 0;
+    const jpHint = r && r.code && /P$/.test(r.code) ? " Japanische Promos (z. B. SV-P mit Nummer über 225) sind nicht in der Datenbank." : "";
+    manualMsg(r
+      ? `❌ <b>${esc(q)}</b> gibt es in der Datenbank nicht.${maxNr ? ` Das Set ${esc(r.code)} hat Nummern bis ${maxNr}.` : ""}${jpHint} Versuch den Kartennamen oder <a href="${cm}" target="_blank" rel="noopener">auf Cardmarket suchen ↗</a>`
+      : `❌ Nicht erkannt. Beispiele: <b>PAR 040</b>, <b>4/102</b>, <b>OP05-119</b>, <b>LOB-DE005</b> oder ein Kartenname wie <b>Glurak</b>.`, false);
+  }catch(err){ console.error(err); manualMsg("❌ Fehler bei der Suche – bitte nochmal versuchen.", false); }
 };
+
 
 // ---------------- Start ----------------
 Promise.all([collReady, pricesReady, ygoPricesReady]).then(() => {
