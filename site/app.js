@@ -27,8 +27,10 @@ const pricesReady = Promise.all([
   else pill.textContent = "Keine Preisliste";
   coll.forEach(c => attachPrice(c)); refreshTotals();
 });
+ygoPricesReady.then(d => { if(!d) return; coll.forEach(c => { if(c.ygo){ attachPrice(c); rerender(c); } }); refreshTotals(); });
 // Preis an Karte hängen: {low, trend, avg7, avg30, holo:{…}, src}
 function attachPrice(c){
+  if(c.ygo) return ygoAttachPrice(c);
   if(c.op){
     const vs = (OPP && OPP.c && OPP.c[c.op.id]) || [];
     c.versions = vs.map(v => ({ id: v[0], low: v[1], trend: v[2], avg7: v[3], avg30: v[4], guess: !!v[5], pack: v[6] || "" }));
@@ -63,7 +65,7 @@ async function removeCard(id){
 const collReady = (async () => {
   try{ coll = (await idb.all()) || []; }catch{ coll = []; }
   coll.sort((a, b) => b.t - a.t);
-  await Promise.all([cardDbReady, opDbReady]);
+  await Promise.all([cardDbReady, opDbReady, ygoDbReady]);
   coll.forEach(c => attachPrice(c));
   refreshTotals();
 })();
@@ -76,7 +78,7 @@ function refreshTotals(){
 }
 function renderColl(){
   const q = $("search").value.trim().toLowerCase(), so = $("sort").value;
-  let l = coll.filter(c => !q || [c.name, c.name_en, c.set, c.set_code, c.number, c.op && c.op.id].join(" ").toLowerCase().includes(q));
+  let l = coll.filter(c => !q || [c.name, c.name_en, c.set, c.set_code, c.number, c.op && c.op.id, c.ygo && c.ygo.key, { pokemon: "pokemon", onepiece: "one piece", yugioh: "yugioh yu-gi-oh" }[c.game]].join(" ").toLowerCase().includes(q));
   if(so === "val") l.sort((a, b) => valueOf(b) - valueOf(a));
   else if(so === "name") l.sort((a, b) => String(a.name).localeCompare(String(b.name), "de"));
   else if(so === "set") l.sort((a, b) => String(a.set).localeCompare(String(b.set), "de") || String(a.number).localeCompare(String(b.number), "de", { numeric: true }));
@@ -102,24 +104,27 @@ $("importInput").onchange = async e => {
 // ---------------- Kartendarstellung ----------------
 function cardHTML(c, mode){
   const p = c.price;
-  const code = c.op ? c.op.id : cmCode(c) || c.number || "";
+  const code = c.op ? c.op.id : c.ygo ? c.number : cmCode(c) || c.number || "";
   const holo = p && (p.trendH || p.lowH);
   const v = valueOf(c);
-  const vers = c.op && c.versions && c.versions.length > 1
+  const vers = c.ygo && c.versions && c.versions.length > 1
+    ? `<div class="vers">${c.versions.map((x, i) => `<button data-ver="${esc(c.id)}" data-i="${i}" class="${i === (c.vi || 0) ? "on" : ""}">${esc(x.pack || "V" + (i + 1))} · ${eur(x.low || x.trend)}</button>`).join("")}</div>
+       <div class="note">Diese Karte gibt es in diesem Set ${c.versions.length}× (verschiedene Seltenheiten) – wähle deine.${c.versions.some(x => x.guess) ? " Zuordnung geschätzt – im Zweifel auf Cardmarket prüfen." : ""}</div>`
+    : c.op && c.versions && c.versions.length > 1
     ? `<div class="vers">${c.versions.map((x, i) => `<button data-ver="${esc(c.id)}" data-i="${i}" class="${i === (c.vi || 0) ? "on" : ""}">V${i + 1}${x.pack && x.pack !== (c.op && c.op.id.split("-")[0]) ? " " + esc(x.pack) : ""} · ${eur(x.low || x.trend)}</button>`).join("")}</div>
        <div class="note">Diese Karte gibt es ${c.versions.length}× (normal, Parallel/Alt Art, Reprints). Wähle die Version mit deinem Motiv – V1 ist meist die normale Karte.${c.versions.some(x => x.guess) ? " Zuordnung der Versionen geschätzt – im Zweifel auf Cardmarket prüfen." : ""}</div>` : "";
   const rh = holo ? `<div class="vers"><button data-rh="${esc(c.id)}" data-v="0" class="${!c.rh ? "on" : ""}">Normal</button><button data-rh="${esc(c.id)}" data-v="1" class="${c.rh ? "on" : ""}">Reverse Holo</button></div>` : "";
   const pr = p ? `<div class="prices">
-      <div><span>ab ${c.real > 0 ? "(alle)" : ""}</span><b>${eur(c.rh && p.lowH ? p.lowH : p.low)}</b></div>
+      <div><span>ab ${c.real > 0 ? "(alle)" : p.est ? "(ca.)" : ""}</span><b>${eur(c.rh && p.lowH ? p.lowH : p.low)}</b></div>
       <div><span>Trend</span><b>${eur(c.rh && p.trendH ? p.trendH : p.trend)}</b></div>
       <div><span>30-T-Ø</span><b>${eur(c.rh && p.avg30H ? p.avg30H : p.avg30)}</b></div></div>`
-    : `<div class="note">${(c.op ? OPP : PP) ? "Für diese Karte steht kein Preis in der Cardmarket-Liste – tippe auf den Cardmarket-Button." : "Preisliste noch nicht geladen (sie wird jeden Morgen aktualisiert)."}</div>`;
+    : `<div class="note">${(c.op ? OPP : c.ygo ? YGOP : PP) ? "Für diese Karte steht kein Preis in der Cardmarket-Liste – tippe auf den Cardmarket-Button." : "Preisliste noch nicht geladen (sie wird jeden Morgen aktualisiert)."}</div>`;
   return `<div class="card ${mode || ""}" data-card="${esc(c.id)}">
     <div class="rowc">
       ${c.thumb ? `<img class="thumb" src="${c.thumb}" alt="">` : `<div class="thumb"></div>`}
       <div class="info">
         <h3>${esc(c.name || c.name_en || "Unbekannt")}${c.name_jp && c.name_jp !== c.name ? ` <span style="font-weight:400;color:var(--muted);font-size:13px">${esc(c.name_jp)}</span>` : ""}</h3>
-        <div class="meta"><b>${esc(code)}</b>${c.set ? " · " + esc(c.set) : ""}${c.language ? " · " + esc(c.language) : ""}</div>
+        <div class="meta"><span class="game g-${esc(c.game || "pokemon")}">${{ onepiece: "One Piece", yugioh: "Yu-Gi-Oh!" }[c.game] || "Pokémon"}</span> <b>${esc(code)}</b>${c.set ? " · " + esc(c.set) : ""}${c.rarity && c.ygo ? " · " + esc(c.rarity) : ""}${c.language ? " · " + esc(c.language) : ""}</div>
       </div>
       <div class="val"><div class="l">${c.real > 0 ? "ab · " + langShort(c) + " ✓" : "ab"}</div><div class="p">${eur(v)}</div></div>
     </div>
@@ -130,7 +135,7 @@ function cardHTML(c, mode){
       ${c.real > 0 ? `<small>✓ gilt als Wert · eingetragen ${new Date(c.realAt || Date.now()).toLocaleDateString("de-DE")}</small>` : ""}</div>
     <div class="speak"><button class="btn secondary small" data-say="${esc(c.id)}">${speakingId === c.id ? "⏹️ Stopp" : "🔊 Vorlesen"}</button><button class="btn secondary small" data-view="${esc(c.id)}">📄 Kartentext</button></div>
     <div class="facts" data-facts="${esc(c.id)}" hidden></div>
-    ${links(c)}
+    ${c.ygo ? ygoLinks(c) : links(c)}
   </div>`;
 }
 function langShort(c){ const l = String(c.language || "").toLowerCase(); return l.startsWith("deu") ? "DE" : l.startsWith("jap") ? "JP" : l.startsWith("fr") ? "FR" : "EN"; }
@@ -202,6 +207,7 @@ const enIcon = t => { const [bg, ch] = EN_ICON[t] || ["#777", "?"]; return `<i c
 const textIcons = t => esc(sayClean(t)).replace(/\b(Pflanzen|Feuer|Wasser|Elektro|Psycho|Kampf|Finsternis|Metall|Feen|Drachen|Farblos)-Energie\b/g, m => m);
 const opText = t => esc(t || "").replace(/\[([^\]]+)\]/g, (m, k) => `<span class="kw">${k}</span>`);
 async function cardViewHTML(c){
+  if(c.ygo) return ygoViewHTML(c);
   if(c.op){
     const o = c.op;
     const tx = await opTexts(o);
@@ -286,6 +292,7 @@ function priceStory(c){
 const dmgPlain = d => String(d ?? "").trim().replace(/\+$/, " plus").replace(/[×x]$/, " mal").replace(/[−-]$/, " minus");
 async function speechParts(c){
   const parts = [], de = t => t && parts.push({ t: sayNums(t), l: "de-DE" }), en = t => t && parts.push({ t, l: "en-US" });
+  if(c.ygo){ const t = await ygoSay(c); if(!t) return null; de(t); return parts; }
   if(c.op){
     const o = c.op;
     const nm = c.name.replace(/\.(?=[A-Z]\.)/, " ").replace(/\.(?=\S)/g, ". ");
@@ -407,6 +414,8 @@ function parseRead(text){
     const id = pre === "P" ? `P-${toDigits(opm[2])}` : `${pre}${toDigits(opm[2])}-${toDigits(opm[3])}`;
     if(OPDB && OPDB.cards[id]) return { kind: "op", id, key: "op:" + id };
   }
+  // Yu-Gi-Oh!: Set-Kürzel "LOB-DE005" (Sprache steht im Kürzel)
+  const yg = ygoParse(raw); if(yg && yg.kind === "ygo") return yg;
   // Pokémon: Nummer "040/182", "TG05/TG30", "GG35/GG70", "SV049/SV094", "4/102"
   // Kürzel zählt nur, wenn es direkt neben der Nummer steht (so ist es gedruckt: "PAL DE 227/193")
   const T = raw.replace(/\s*\/\s*/g, "/").replace(/\s+/g, " ");
@@ -444,6 +453,7 @@ function parseRead(text){
     if(!best) best = cand;
   }
   if(best) return best;
+  if(yg) return yg;   // Yu-Gi-Oh!-Passcode (Karte bekannt, Ausgabe wählen)
   // Promo ohne Gesamtzahl: "SVP 049", "MEP 012" – Kürzel muss direkt davor stehen
   const pm = T.match(/\b([A-Z]{2,4}\d?)(?: (?:DE|EN|FR|IT|ES|PT))? ([0-9OIS]{2,3})\b/g) || [];
   for(const x of pm){
@@ -454,6 +464,7 @@ function parseRead(text){
 }
 // Kandidaten in der Datenbank suchen -> [{c, label, sub}]
 function candidates(r){
+  if(r.kind === "ygo" || r.kind === "ygopass") return ygoCandidates(r);
   if(r.kind === "op"){
     const c = opApply({ game: "onepiece", number: r.id, language: LANG === "Japanisch" ? "Japanisch" : "Englisch" });
     return c.op ? [{ c, label: c.name, sub: `${c.op.id} · ${c.set}` }] : [];
@@ -514,7 +525,7 @@ function addCard(c, thumb){
   const t = document.createElement("div"); t.innerHTML = cardHTML(c, "latest");
   $("results").prepend(t.firstElementChild);
   if(navigator.vibrate) navigator.vibrate(60);
-  toast(`✓ ${c.name} · ${c.op ? c.op.id : cmCode(c)} · ${eur(valueOf(c))}`);
+  toast(`✓ ${c.name} · ${c.op ? c.op.id : c.ygo ? c.number : cmCode(c)} · ${eur(valueOf(c))}`);
 }
 function chooseFrom(list, thumb, why){
   return new Promise(res => {
@@ -559,18 +570,18 @@ document.addEventListener("click", async e => {
   if(src) await analyzePhoto(src, { keepCam: !!stream, thorough: true });
 });
 async function handleRead(r, thumb, inline){
-  await Promise.all([cardDbReady, opDbReady]);
+  await Promise.all([cardDbReady, opDbReady, ygoDbReady]);
   const list = candidates(r);
-  if(!list.length){ setStatus(`<b>${esc(r.code ? r.code + " " : "")}${esc(r.number || r.id)}</b> gelesen, aber nicht in der Datenbank gefunden. Karte etwas näher/gerader halten oder manuell eingeben.`); return false; }
+  if(!list.length){ setStatus(`<b>${esc(r.code ? r.code + " " : "")}${esc(r.number || r.id || r.print || r.key)}</b> gelesen, aber nicht in der Datenbank gefunden. Karte etwas näher/gerader halten oder manuell eingeben.`); return false; }
   let pick = list[0];
   const sure = r.kind === "op" || (r.strong && list.length === 1);
   if(!sure && inline){
-    inlinePick(list, thumb, list.length > 1 ? `Nummer ${r.number} passt zu ${list.length} Sets` : `Kein Set-Kürzel sicher gelesen (Nummer ${r.number}) – bitte bestätigen`);
+    inlinePick(list, thumb, r.kind === "ygopass" ? `Yu-Gi-Oh!-Karte „${list[0].label}“ erkannt – welche Ausgabe? (Set-Kürzel nicht lesbar)` : list.length > 1 ? `Nummer ${r.number} passt zu ${list.length} Sets` : `Kein Set-Kürzel sicher gelesen (Nummer ${r.number}) – bitte bestätigen`);
     return true;
   }
   if(!sure){
     paused = true;
-    pick = await chooseFrom(list, thumb, list.length > 1
+    pick = await chooseFrom(list, thumb, r.kind === "ygopass" ? `„${list[0].label}“ erkannt – welche Ausgabe ist es?` : list.length > 1
       ? `Die Nummer ${r.number} passt zu ${list.length} Sets – welche ist es?`
       : `Kein Set-Kürzel sicher gelesen – ist es diese Karte? (Nummer ${r.number})`);
     paused = false;
@@ -719,7 +730,7 @@ async function startCam(nextCam){
   };
   if(caps.torch){ const b = $("torchBtn"); b.hidden = false; b.onclick = async () => { const on = !b.classList.contains("on"); try{ await track.applyConstraints({ advanced: [{ torch: on }] }); b.classList.toggle("on", on); }catch{} }; }
   setStatus("<b>Auto-Foto:</b> Karte in den Rahmen legen und Handy ruhig halten (ca. 15–20 cm, Zoom-Regler nutzen). Sobald sie scharf ist, macht die App das Foto selbst. Danach einfach die nächste Karte hinlegen.");
-  await Promise.all([ocrReady, cardDbReady, opDbReady]);
+  await Promise.all([ocrReady, cardDbReady, opDbReady, ygoDbReady]);
   if(!loop.running){ loop.running = true; loop().finally(() => loop.running = false); }
 }
 $("startBtn").onclick = () => startCam();
@@ -817,12 +828,14 @@ function cardThumb(src, x, y, w, h){
 const WL = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/- ";
 const FREE_WL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÄÖÜäöüßéÉèàç0123456789/-.'’:& ";
 let NAMEIDX = null;   // normierter Kartenname -> Fundstellen
+ygoDbReady.then(() => { NAMEIDX = null; });
 function nameIndex(){
   if(NAMEIDX) return NAMEIDX;
   NAMEIDX = new Map();
   const add = (k, v) => { if(k.length < 4) return; if(!NAMEIDX.has(k)) NAMEIDX.set(k, []); NAMEIDX.get(k).push(v); };
   if(CDB) for(const st of CDB.sets.values()){ const m = CDB.cards.get(st.id); if(m) for(const e of m.values()){ add(nrm(e[2]), { kind: "pk", st, e }); if(e[3] && nrm(e[3]) !== nrm(e[2])) add(nrm(e[3]), { kind: "pk", st, e, de: true }); } }
   if(OPDB) for(const [id, e] of Object.entries(OPDB.cards)) add(nrm(e[0]), { kind: "op", id });
+  if(YGO) for(const [pc, e] of Object.entries(YGO.c)){ add(nrm(e[0]), { kind: "ygo", pc: +pc }); if(e[1] && nrm(e[1]) !== nrm(e[0])) add(nrm(e[1]), { kind: "ygo", pc: +pc }); }
   return NAMEIDX;
 }
 // Kartennamen im Freitext finden (1–3 Wörter am Stück)
@@ -859,7 +872,7 @@ async function analyzePhoto(file, opts){
   const thumb = cardThumb(cv, (W - tw) / 2, (H - th) / 2, tw, th);
   const box = photoBox(thumb, "Texterkennung startet …");
   const step = t => { const m = box.querySelector("#anaStep"); if(m) m.textContent = t; };
-  await Promise.all([ocrReady, cardDbReady, opDbReady]);
+  await Promise.all([ocrReady, cardDbReady, opDbReady, ygoDbReady]);
   if(!worker){ box.remove(); setStatus("Texterkennung nicht verfügbar – bitte manuell eingeben."); return; }
   const wasPaused = paused; if(!keepCam) paused = true;
   const texts = [];
@@ -894,6 +907,8 @@ async function analyzePhoto(file, opts){
         hit = await tryAreaInv(cv, 0, H * 0.74, W, H * 0.26, `Lese Kürzel + Nummer${inv ? " (helle Schrift)" : ""} …`, inv);
         if(hit) break;
       }
+      // Yu-Gi-Oh!: Kürzel steht rechts unter dem Bild
+      if(!hit && YGO) hit = await tryAreaInv(cv, W * 0.35, H * 0.64, W * 0.65, H * 0.14, "Lese Yu-Gi-Oh!-Kürzel …", false);
     }
     // 1) ganzes Foto
     if(!hit) hit = await tryArea(cv, 0, 0, W, H, "Suche Kürzel + Nummer im ganzen Foto …", { maxW: 2000, adaptive: true });
@@ -941,7 +956,9 @@ async function analyzePhoto(file, opts){
     for(const [, hits] of names.slice(0, 3)){
       for(const h of hits){
         if(list.length > 60) break;
-        if(h.kind === "op"){
+        if(h.kind === "ygo"){
+          for(const x of ygoPrintsLabeled(h.pc, lang)) if(list.length <= 60) list.push({ ...x, score: 1 });
+        } else if(h.kind === "op"){
           const c = opApply({ game: "onepiece", number: h.id, language: lang === "Japanisch" ? "Japanisch" : "Englisch" });
           if(c.op) list.push({ c, label: c.name, sub: `${c.op.id} · ${c.set}`, score: 1 });
         } else {
@@ -983,10 +1000,22 @@ $("galleryInput").onchange = async e => {
 $("manualForm").onsubmit = async e => {
   e.preventDefault();
   const q = $("manualInput").value.trim(); if(!q) return;
-  await Promise.all([cardDbReady, opDbReady]);
+  await Promise.all([cardDbReady, opDbReady, ygoDbReady]);
   let r = parseRead(q);
   if(!r){ const m = q.toUpperCase().match(/^([A-Z0-9]{2,5})\s*([A-Z]{0,2}\d{1,3})$/); if(m && knownCodes().has(m[1])) r = { kind: "pk", code: m[1], number: m[2], lang: "", strong: true, key: "m" }; }
-  if(!r){ setStatus("Eingabe nicht erkannt. Beispiele: <b>PAR 040</b>, <b>PAR 040/182</b>, <b>4/102</b>, <b>OP05-119</b>."); return; }
+  if(!r){
+    // Kartenname eingetippt (alle Spiele)
+    const names = namesInText(q);
+    const list = [];
+    for(const [, hits] of names.slice(0, 2)) for(const h of hits){
+      if(list.length > 40) break;
+      if(h.kind === "ygo") list.push(...ygoPrintsLabeled(h.pc, LANG));
+      else if(h.kind === "op"){ const c = opApply({ game: "onepiece", number: h.id, language: LANG === "Japanisch" ? "Japanisch" : "Englisch" }); if(c.op) list.push({ c, label: c.name, sub: `${c.op.id} · ${c.set}` }); }
+      else { const c = applyDb({ set_code: h.st.code || "", set: h.st.en, set_en: h.st.en, name: h.e[2], name_en: h.e[2], number: `${h.e[0]}/${h.st.total || ""}`, language: LANG }); if(c.db) list.push({ c: finishPk(c, LANG), label: LANG === "Deutsch" && h.e[3] ? h.e[3] : h.e[2], sub: `${h.st.code ? h.st.code + " · " : ""}${LANG === "Deutsch" ? h.st.de || h.st.en : h.st.en} · Nr. ${h.e[0]}` }); }
+    }
+    if(list.length){ inlinePick(list, "", `Name „${list[0].label}“ – welche Ausgabe?`); $("manualInput").value = ""; return; }
+    setStatus("Eingabe nicht erkannt. Beispiele: <b>PAR 040</b>, <b>4/102</b>, <b>OP05-119</b>, <b>LOB-DE005</b> oder ein Kartenname."); return;
+  }
   if(await handleRead(r, "")){ $("manualInput").value = ""; setStatus("✓ Übernommen."); }
 };
 
@@ -998,7 +1027,7 @@ Promise.all([collReady, pricesReady]).then(() => {
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
 // ---------------- Update-Knopf ----------------
-const APP_FILES = ["./", "index.html", "app.js", "lib/cards.js", "sw.js", "manifest.webmanifest", "version.json"];
+const APP_FILES = ["./", "index.html", "app.js", "lib/cards.js", "lib/ygo.js", "sw.js", "manifest.webmanifest", "version.json"];
 const getVer = () => { try{ return localStorage.getItem("cgd-ver") || ""; }catch{ return ""; } };
 const setVer = v => { try{ localStorage.setItem("cgd-ver", v); }catch{} };
 async function latestVersion(){

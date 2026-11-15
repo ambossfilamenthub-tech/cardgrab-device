@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>CardGrab Device – Karten-Scanner</title>
 <meta name="theme-color" content="#0a0916">
-<meta name="description" content="Pokémon- und One-Piece-Karten mit der Handykamera erkennen und den Cardmarket-Preis sehen – alles auf dem Gerät.">
+<meta name="description" content="Pokémon-, One-Piece- und Yu-Gi-Oh!-Karten mit der Handykamera erkennen und den Cardmarket-Preis sehen – alles auf dem Gerät.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -93,6 +93,16 @@
   .cv-counter{display:inline-block;font:800 11.5px system-ui,sans-serif;background:#222;color:#fff;border-radius:5px;padding:2px 7px;margin-bottom:6px}
   .cv-eff{font-size:13.5px;line-height:1.45;background:rgba(255,255,255,.7);border-radius:8px;padding:7px 8px;margin-top:4px}
   .cv-eff.trig{background:#fff7d1}
+  .cv.ygo{background:linear-gradient(180deg,var(--yc) 0 44px,color-mix(in srgb,var(--yc) 18%,#f4efe2) 44px);box-shadow:inset 0 0 0 3px color-mix(in srgb,var(--yc) 70%,#000)}
+  .cv.ygo .cv-name{color:#111;text-shadow:0 1px 0 rgba(255,255,255,.5)}
+  .cv-attr{font:800 11px system-ui,sans-serif;background:rgba(0,0,0,.65);color:#fff;border-radius:12px;padding:3px 8px}
+  .cv-stars{color:#e0a000;font-size:15px;letter-spacing:1px;text-align:right;margin:-2px 0 4px}
+  .cv-stars small{color:#333;font:700 11px system-ui,sans-serif;letter-spacing:0}
+  .cv-eff.pend{background:#e7f4ef}
+  .cv-stat{text-align:right;font:800 14px system-ui,sans-serif;margin-top:6px}
+  .game{display:inline-block;font:800 10px system-ui,sans-serif;border-radius:5px;padding:1px 5px;vertical-align:1px;background:#ffcb05;color:#222}
+  .game.g-onepiece{background:#d93b3b;color:#fff}
+  .game.g-yugioh{background:#6b3fa0;color:#fff}
   .kw{display:inline-block;font:800 10.5px system-ui,sans-serif;background:#2a5fb8;color:#fff;border-radius:4px;padding:1px 5px;margin:0 2px}
   .facts .voice{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--muted)}
   .facts select{flex:1;min-width:0;background:rgba(10,9,22,.6);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:6px 8px;font:13px system-ui,sans-serif}
@@ -214,7 +224,7 @@
       <label class="btn secondary small" for="photoInput" style="margin-left:auto">📸 Foto</label>
     </div>
     <form class="manual" id="manualForm" autocomplete="off">
-      <input id="manualInput" placeholder="Manuell: PAR 040 · 4/102 · OP05-119" enterkeyhint="search">
+      <input id="manualInput" placeholder="Manuell: PAR 040 · OP05-119 · LOB-DE005 · Name" enterkeyhint="search">
       <button class="btn secondary small" type="submit">Suchen</button>
     </form>
 
@@ -237,7 +247,7 @@
     <div id="collList"></div>
   </section>
 
-  <div class="hint"><b>So funktioniert's:</b> Die Erkennung läuft komplett auf deinem Handy: Die Kamera liest Set-Kürzel und Nummer und sucht die Karte in der eingebauten Datenbank (alle Pokémon-Sets EN/DE, One Piece EN/JP). Die Preise stammen aus der offiziellen Cardmarket-Preisliste, die jeden Morgen neu geladen wird. Als Wert zählt der <b>ab-Preis</b> (günstigstes Angebot aller Sprachen), dazu Trend und 30-Tage-Ø. Die Liste kennt keine Preise pro Sprache – trag den günstigsten Preis in deiner Sprache unter der Karte ein, dann zählt dieser. Der Cardmarket-Button öffnet die Karte gefiltert auf <b>Verkäufer aus Deutschland, Near Mint und die Sprache deiner Karte</b>. Deine Sammlung bleibt nur auf diesem Gerät – nutze „Sicherung speichern“ als Backup.</div>
+  <div class="hint"><b>So funktioniert's:</b> Die Erkennung läuft komplett auf deinem Handy: Die Kamera liest Set-Kürzel und Nummer und sucht die Karte in der eingebauten Datenbank (alle Pokémon-Sets EN/DE, One Piece EN/JP, Yu-Gi-Oh! alle Sets – die Sprache steht im Kürzel, z. B. LOB-<b>DE</b>005). Die Preise stammen aus der offiziellen Cardmarket-Preisliste, die jeden Morgen neu geladen wird. Als Wert zählt der <b>ab-Preis</b> (günstigstes Angebot aller Sprachen), dazu Trend und 30-Tage-Ø. Die Liste kennt keine Preise pro Sprache – trag den günstigsten Preis in deiner Sprache unter der Karte ein, dann zählt dieser. Der Cardmarket-Button öffnet die Karte gefiltert auf <b>Verkäufer aus Deutschland, Near Mint und die Sprache deiner Karte</b>. Deine Sammlung bleibt nur auf diesem Gerät – nutze „Sicherung speichern“ als Backup.</div>
   <div class="upd">
     <button class="btn secondary" id="updBtn">🔄 Nach Updates suchen</button>
     <small id="verTxt">Version wird geprüft …</small>
@@ -260,6 +270,7 @@
 
 <script src="lib/tesseract.min.js"></script>
 <script src="lib/cards.js"></script>
+<script src="lib/ygo.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

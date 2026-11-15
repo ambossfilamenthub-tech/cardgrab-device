@@ -1,6 +1,6 @@
 // CardGrab Device – Offline-Cache. App-Dateien & Texterkennung: Cache zuerst; Preise & Seite: Netz zuerst.
-const V = "cgd-v19";
-const CORE = ["./", "index.html", "app.js", "lib/cards.js", "lib/tesseract.min.js", "lib/worker.min.js", "carddb.json", "opdb.json",
+const V = "cgd-v20";
+const CORE = ["./", "index.html", "app.js", "lib/cards.js", "lib/ygo.js", "lib/tesseract.min.js", "lib/worker.min.js", "carddb.json", "opdb.json",
   "cardgrab-logo-sm.webp", "cardgrab-logo-md.webp", "manifest.webmanifest", "icons/icon-192.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(V).then(c => c.addAll(CORE)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== V).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
@@ -8,6 +8,16 @@ self.addEventListener("fetch", e => {
   const u = new URL(e.request.url);
   if(e.request.method !== "GET" || u.origin !== location.origin) return;
   const netFirst = /prices-|version\.json|index\.html$|\/$|app\.js$|cards\.js$|sw\.js$/.test(u.pathname);
+  // große Daten, die sich ändern: sofort aus dem Speicher, im Hintergrund aktualisieren
+  if(/ygodb\.json|op-de\.json|\/ygotext\/|\/facts\//.test(u.pathname)){
+    e.respondWith(caches.open(V).then(async x => {
+      const m = await x.match(e.request);
+      const f = fetch(e.request).then(r => { if(r.ok) x.put(e.request, r.clone()); return r; }).catch(() => m);
+      if(m){ e.waitUntil(f); return m; }
+      return f;
+    }));
+    return;
+  }
   if(netFirst){
     e.respondWith(fetch(e.request).then(r => { const c = r.clone(); caches.open(V).then(x => x.put(e.request, c)); return r; }).catch(() => caches.match(e.request)));
   } else {
