@@ -255,25 +255,48 @@ function parseRead(text){
     if(OPDB && OPDB.cards[id]) return { kind: "op", id, key: "op:" + id };
   }
   // Pokémon: Nummer "040/182", "TG05/TG30", "GG35/GG70", "SV049/SV094", "4/102"
-  const nm = raw.replace(/\s*\/\s*/g, "/").match(/\b([A-Z]{0,2}[0-9OIS]{1,3})\/([A-Z]{0,2}[0-9OIS]{2,3})\b/);
+  // Kürzel zählt nur, wenn es direkt neben der Nummer steht (so ist es gedruckt: "PAL DE 227/193")
+  const T = raw.replace(/\s*\/\s*/g, "/").replace(/\s+/g, " ");
   const codes = knownCodes();
-  let code = "", lang = "";
-  const toks = raw.split(/[^A-Z0-9]+/).filter(Boolean);
-  for(let i = 0; i < toks.length; i++){
-    const tk = toks[i];
-    if(LANG_TOKENS[tk]) lang = LANG_TOKENS[tk];
-    const cand = [tk, toLetters(tk.replace(/\d$/, "")) + (tk.match(/\d$/) || [""])[0], tk.replace(/(DE|EN|FR|IT|ES|PT)$/, "")];
-    for(const c of cand){ if(c.length >= 2 && c.length <= 5 && codes.has(c) && !/^\d+$/.test(c)){ code = c; const l2 = tk.slice(c.length); if(LANG_TOKENS[l2]) lang = LANG_TOKENS[l2]; break; } }
-    if(code) break;
+  const fix = t => { const m = t.match(/^(TG|GG|SV|RC|SH|H)(.*)$/); return m && /^[0-9OIS]+$/.test(m[2]) ? m[1] + toDigits(m[2]) : toDigits(t); };
+  const codeIn = tk => {
+    for(const c of [tk, tk.replace(/(DE|EN|FR|IT|ES|PT)$/, ""), toLetters(tk.replace(/\d$/, "")) + (tk.match(/\d$/) || [""])[0]]){
+      if(c.length >= 2 && c.length <= 5 && !/^\d+$/.test(c) && codes.has(c)){
+        const l2 = tk.slice(c.length); return { code: c, lang: LANG_TOKENS[l2] || "" };
+      }
+    }
+    return null;
+  };
+  const near = (str, before) => {
+    // Wörter direkt vor (bzw. nach) der Nummer prüfen – höchstens 2 Wörter Abstand (Kürzel + Sprache)
+    const ws = str.trim().split(" ").filter(Boolean);
+    const list = before ? ws.slice(-3).reverse() : ws.slice(0, 3);
+    let lang = "";
+    for(const w0 of list){
+      const w = w0.replace(/[^A-Z0-9]/g, ""); if(!w) continue;
+      if(LANG_TOKENS[w]){ lang = LANG_TOKENS[w]; continue; }
+      const hit = codeIn(w); if(hit) return { code: hit.code, lang: hit.lang || lang };
+    }
+    return { code: "", lang };
+  };
+  const re = /\b([A-Z]{0,2}[0-9OIS]{1,3})\/([A-Z]{0,2}[0-9OIS]{2,3})\b/g;
+  let best = null, m;
+  while((m = re.exec(T))){
+    const left = fix(m[1]), right = fix(m[2]);
+    if(!/\d/.test(left) || !/\d/.test(right)) continue;
+    let k = near(T.slice(Math.max(0, m.index - 16), m.index), true);
+    if(!k.code) k = near(T.slice(m.index + m[0].length, m.index + m[0].length + 14), false);
+    const cand = { kind: "pk", code: k.code, number: `${left}/${right}`, lang: k.lang, strong: !!k.code, key: `pk:${k.code}:${left}/${right}` };
+    if(cand.strong){ best = cand; break; }
+    if(!best) best = cand;
   }
-  if(nm){
-    // Buchstaben-Präfix nur bei echten Galerie-/Sondernummern (TG05, GG35, SV049, RC12, H01, SH5)
-    const fix = t => { const m = t.match(/^(TG|GG|SV|RC|SH|H)(.*)$/); return m && /^[0-9OIS]+$/.test(m[2]) ? m[1] + toDigits(m[2]) : toDigits(t); };
-    const left = fix(nm[1]), right = fix(nm[2]);
-    return { kind: "pk", code, number: `${left}/${right}`, lang, key: `pk:${code}:${left}/${right}` };
+  if(best) return best;
+  // Promo ohne Gesamtzahl: "SVP 049", "MEP 012" – Kürzel muss direkt davor stehen
+  const pm = T.match(/\b([A-Z]{2,4}\d?)(?: (?:DE|EN|FR|IT|ES|PT))? ([0-9OIS]{2,3})\b/g) || [];
+  for(const x of pm){
+    const mm = x.match(/^([A-Z]{2,4}\d?)(?: (DE|EN|FR|IT|ES|PT))? ([0-9OIS]{2,3})$/);
+    if(mm && codes.has(mm[1]) && /P$/.test(mm[1])){ const n = toDigits(mm[3]); return { kind: "pk", code: mm[1], number: n, lang: LANG_TOKENS[mm[2]] || "", strong: true, key: `pk:${mm[1]}:${n}` }; }
   }
-  // Promo ohne Gesamtzahl: "SVP 049", "MEP 012"
-  if(code){ const pm = raw.match(new RegExp(`\\b${code}\\b[^0-9]{0,6}([0-9OIS]{2,3})\\b`)); if(pm){ const n = toDigits(pm[1]); return { kind: "pk", code, number: n, lang, key: `pk:${code}:${n}` }; } }
   return null;
 }
 // Kandidaten in der Datenbank suchen -> [{c, label, sub}]
@@ -293,11 +316,11 @@ function candidates(r){
   };
   const tryCode = code => {
     const c = applyDb({ set_code: code, number: r.number, language });
-    return c.db ? [{ c: finishPk(c, language), label: c.db.en, sub: `${c.db.code} ${c.db.lid} · ${c.db.setDe}` }] : [];
+    return c.db ? [{ c: finishPk(c, language), label: language === "Deutsch" && c.db.de ? c.db.de : c.db.en, sub: `${c.db.code} ${c.db.lid} · ${language === "Deutsch" ? c.db.setDe : c.db.setEn}` }] : [];
   };
-  if(r.code && totalOk(r.code)){ const h = tryCode(r.code); if(h.length) return h; }
+  if(r.code && r.strong !== false && totalOk(r.code)){ const h = tryCode(r.code); if(h.length) return h; }
   // Kürzel falsch gelesen (z. B. "AR" statt "PAR")? -> ähnliche Kürzel mit passender Kartenzahl
-  if(r.code && isFinite(total)){
+  if(r.code && r.strong !== false && isFinite(total)){
     const sim = [...knownCodes()].filter(k => k !== r.code && lev(k, r.code) <= 1 && totalOk(k) && (CDB.byCode.get(CODE_ALIAS[k] || k) || []).some(st => st.total === total));
     const hits = sim.flatMap(tryCode);
     if(hits.length) return hits;
@@ -355,9 +378,12 @@ async function handleRead(r, thumb){
   const list = candidates(r);
   if(!list.length){ setStatus(`<b>${esc(r.code ? r.code + " " : "")}${esc(r.number || r.id)}</b> gelesen, aber nicht in der Datenbank gefunden. Karte etwas näher/gerader halten oder manuell eingeben.`); return false; }
   let pick = list[0];
-  if(list.length > 1){
+  const sure = r.kind === "op" || (r.strong && list.length === 1);
+  if(!sure){
     paused = true;
-    pick = await chooseFrom(list, thumb, `Die Nummer ${r.number} passt zu ${list.length} Sets (ältere Karten haben kein Set-Kürzel).`);
+    pick = await chooseFrom(list, thumb, list.length > 1
+      ? `Die Nummer ${r.number} passt zu ${list.length} Sets – welche ist es?`
+      : `Kein Set-Kürzel sicher gelesen – ist es diese Karte? (Nummer ${r.number})`);
     paused = false;
     if(!pick) return false;
   }
@@ -614,7 +640,7 @@ async function analyzePhoto(file){
   if(file instanceof HTMLCanvasElement) bmp = file;
   else { try{ bmp = await createImageBitmap(file, { imageOrientation: "from-image" }); }catch{ bmp = await createImageBitmap(file); } }
   // auf max. 2000 px (lange Seite) verkleinern – reicht für die kleine Schrift und bleibt schnell
-  const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+  const k = Math.min(1, 3000 / Math.max(bmp.width, bmp.height));
   const cv = document.createElement("canvas"); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
   cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height);
   const W = cv.width, H = cv.height;
@@ -631,18 +657,38 @@ async function analyzePhoto(file){
     step(label);
     const { r, text } = await ocrRegion(src, x, y, w, h, opts);
     texts.push(text); $("readOut").textContent = text ? text.slice(0, 60) : "–";
-    if(r && candidates(r).length) return r;
+    return keep(r);
+  };
+  // sichere Treffer (Kürzel direkt an der Nummer / One Piece) sofort nehmen, unsichere nur merken
+  let weak = null;
+  const keep = r => {
+    if(!r || !candidates(r).length) return null;
+    if(r.kind === "op" || r.strong) return r;
+    if(!weak) weak = r;
     return null;
+  };
+  // einzelner Durchgang mit fester Schriftfarbe (normal / hell auf dunkel)
+  const tryAreaInv = async (src, x, y, w, h, label, inv) => {
+    step(label);
+    const pc = prepStrip(src, x, y, w, h, inv, 3000, true);
+    const { data } = await worker.recognize(pc);
+    const text = (data.text || "").replace(/\s+/g, " ").trim();
+    texts.push(text); $("readOut").textContent = text ? text.slice(0, 60) : "–";
+    return keep(parseRead(text));
   };
   let hit = null;
   try{
     // 1) ganzes Foto
     hit = await tryArea(cv, 0, 0, W, H, "Suche Kürzel + Nummer im ganzen Foto …", { maxW: 2000, adaptive: true });
     // 2) waagerechte Streifen – wo die Karte unten ihre Nummer hat (wahrscheinlichste Lagen zuerst)
+    // erst dunkle Schrift, dann helle Schrift (Vollbild-/Illustration-Rare-Karten: weiße Nummer auf dem Bild)
     const bands = [0.74, 0.82, 0.66, 0.58, 0.5, 0.42, 0.34, 0.88];
-    for(let i = 0; !hit && i < bands.length; i++){
-      const y = Math.max(0, H * bands[i] - H * 0.04), h = Math.min(H - y, H * 0.2);
-      hit = await tryArea(cv, 0, y, W, h, `Suche Kürzel + Nummer … ${i + 1}/${bands.length}`, { maxW: 2400, noInvert: true, adaptive: true });
+    for(const inv of [false, true]){
+      for(let i = 0; !hit && i < bands.length; i++){
+        const y = Math.max(0, H * bands[i] - H * 0.04), h = Math.min(H - y, H * 0.2);
+        hit = await tryAreaInv(cv, 0, y, W, h, `Suche Kürzel + Nummer${inv ? " (helle Schrift)" : ""} … ${i + 1}/${bands.length}`, inv);
+      }
+      if(hit) break;
     }
     // 3) Querformat / gedrehte Karte: 90° drehen und noch einmal
     if(!hit){
@@ -653,9 +699,10 @@ async function analyzePhoto(file){
         if(hit) break;
       }
     }
+    if(!hit && weak) hit = weak;   // nur Nummer gelesen -> Auswahl/Bestätigung statt automatisch
     if(hit){
       box.remove(); paused = wasPaused;
-      if(await handleRead(hit, thumb)) setStatus("✓ Karte aus dem Foto übernommen.");
+      if(await handleRead(hit, thumb)) setStatus(hit.strong || hit.kind === "op" ? "✓ Karte aus dem Foto übernommen." : "✓ Karte nach deiner Bestätigung übernommen.");
       return;
     }
     // 4) Kein Kürzel/keine Nummer: Kartenname lesen und in der Datenbank suchen
@@ -663,8 +710,11 @@ async function analyzePhoto(file){
     await worker.setParameters({ tessedit_char_whitelist: FREE_WL });
     let free = "";
     try{
-      const top = prepStrip(cv, 0, 0, W, H * 0.7, false, 2000, true);
-      free = (await worker.recognize(top)).data.text || "";
+      for(const inv of [false, true]){
+        const top = prepStrip(cv, 0, 0, W, H * 0.7, inv, 2000, true);
+        free += " " + ((await worker.recognize(top)).data.text || "");
+        if(namesInText(free).length) break;
+      }
     } finally { await worker.setParameters({ tessedit_char_whitelist: WL }); }
     const all = texts.join(" ") + " " + free;
     const nums = [...all.toUpperCase().matchAll(/\b([A-Z]{0,2}\d{1,3})\s*\/\s*([A-Z]{0,2}\d{2,3})\b/g)].map(m => m[1].replace(/^0+(?=\d)/, ""));
@@ -693,7 +743,7 @@ async function analyzePhoto(file){
     }
     list.sort((a, b) => b.score - a.score);
     paused = true;
-    const pick = list.length === 1 ? list[0] : await chooseFrom(list, thumb, `Kartenname erkannt: „${list[0].label}“${nums.length ? "" : " – die Nummer war nicht lesbar"}. Welche Ausgabe ist es?`);
+    const pick = await chooseFrom(list, thumb, `Kartenname erkannt: „${list[0].label}“${nums.length ? "" : " – die Nummer war nicht lesbar"}. Welche Ausgabe ist es?`);
     paused = wasPaused;
     if(pick){ addCard(pick.c, thumb); setStatus("✓ Karte über den Namen gefunden."); }
   }catch(e){
@@ -716,7 +766,7 @@ $("manualForm").onsubmit = async e => {
   const q = $("manualInput").value.trim(); if(!q) return;
   await Promise.all([cardDbReady, opDbReady]);
   let r = parseRead(q);
-  if(!r){ const m = q.toUpperCase().match(/^([A-Z0-9]{2,5})\s*([A-Z]{0,2}\d{1,3})$/); if(m && knownCodes().has(m[1])) r = { kind: "pk", code: m[1], number: m[2], lang: "", key: "m" }; }
+  if(!r){ const m = q.toUpperCase().match(/^([A-Z0-9]{2,5})\s*([A-Z]{0,2}\d{1,3})$/); if(m && knownCodes().has(m[1])) r = { kind: "pk", code: m[1], number: m[2], lang: "", strong: true, key: "m" }; }
   if(!r){ setStatus("Eingabe nicht erkannt. Beispiele: <b>PAR 040</b>, <b>PAR 040/182</b>, <b>4/102</b>, <b>OP05-119</b>."); return; }
   if(await handleRead(r, "")){ $("manualInput").value = ""; setStatus("✓ Übernommen."); }
 };
