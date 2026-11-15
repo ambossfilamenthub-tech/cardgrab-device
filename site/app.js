@@ -42,7 +42,7 @@ function attachPrice(c){
   return c;
 }
 // Wert = "ab"-Preis (günstigstes Angebot); nur wenn keiner da ist: Trend
-const valueOf = c => { const p = c.price; if(!p) return 0; if(c.rh && (p.lowH || p.trendH)) return p.lowH || p.trendH; return p.low || p.trend || p.avg30 || 0; };
+const valueOf = c => { if(c.real > 0) return c.real; const p = c.price; if(!p) return 0; if(c.rh && (p.lowH || p.trendH)) return p.lowH || p.trendH; return p.low || p.trend || p.avg30 || 0; };
 
 // ---------------- Sammlung (IndexedDB, nur auf diesem Gerät) ----------------
 let coll = [];
@@ -110,7 +110,7 @@ function cardHTML(c, mode){
        <div class="note">Diese Karte gibt es ${c.versions.length}× (normal, Parallel/Alt Art, Reprints). Wähle die Version mit deinem Motiv – V1 ist meist die normale Karte.${c.versions.some(x => x.guess) ? " Zuordnung der Versionen geschätzt – im Zweifel auf Cardmarket prüfen." : ""}</div>` : "";
   const rh = holo ? `<div class="vers"><button data-rh="${esc(c.id)}" data-v="0" class="${!c.rh ? "on" : ""}">Normal</button><button data-rh="${esc(c.id)}" data-v="1" class="${c.rh ? "on" : ""}">Reverse Holo</button></div>` : "";
   const pr = p ? `<div class="prices">
-      <div><span>ab</span><b>${eur(c.rh && p.lowH ? p.lowH : p.low)}</b></div>
+      <div><span>ab ${c.real > 0 ? "(alle)" : ""}</span><b>${eur(c.rh && p.lowH ? p.lowH : p.low)}</b></div>
       <div><span>Trend</span><b>${eur(c.rh && p.trendH ? p.trendH : p.trend)}</b></div>
       <div><span>30-T-Ø</span><b>${eur(c.rh && p.avg30H ? p.avg30H : p.avg30)}</b></div></div>`
     : `<div class="note">${(c.op ? OPP : PP) ? "Für diese Karte steht kein Preis in der Cardmarket-Liste – tippe auf den Cardmarket-Button." : "Preisliste noch nicht geladen (sie wird jeden Morgen aktualisiert)."}</div>`;
@@ -121,15 +121,31 @@ function cardHTML(c, mode){
         <h3>${esc(c.name || c.name_en || "Unbekannt")}${c.name_jp && c.name_jp !== c.name ? ` <span style="font-weight:400;color:var(--muted);font-size:13px">${esc(c.name_jp)}</span>` : ""}</h3>
         <div class="meta"><b>${esc(code)}</b>${c.set ? " · " + esc(c.set) : ""}${c.language ? " · " + esc(c.language) : ""}</div>
       </div>
-      <div class="val"><div class="l">ab</div><div class="p">${eur(v)}</div></div>
+      <div class="val"><div class="l">${c.real > 0 ? "ab · " + langShort(c) + " ✓" : "ab"}</div><div class="p">${eur(v)}</div></div>
     </div>
     ${pr}${rh}${vers}
+    <div class="real"><span>Günstigster Preis in <b>${langLong(c)}</b> (DE-Verkäufer, NM) – vom Cardmarket-Button ablesen:</span>
+      <input type="text" inputmode="decimal" data-real="${esc(c.id)}" value="${c.real > 0 ? String(c.real).replace(".", ",") : ""}" placeholder="z. B. 0,12">
+      <span class="eur">€</span><button class="btn secondary small" data-realok="${esc(c.id)}">${c.real > 0 ? "Ändern" : "Übernehmen"}</button>
+      ${c.real > 0 ? `<small>✓ gilt als Wert · eingetragen ${new Date(c.realAt || Date.now()).toLocaleDateString("de-DE")}</small>` : ""}</div>
     <div class="speak"><button class="btn secondary small" data-say="${esc(c.id)}">${speakingId === c.id ? "⏹️ Stopp" : "🔊 Vorlesen"}</button><span>${c.op ? "Kosten, Stärke, Konter & Effekt" : "KP, Attacken & Schaden"}</span></div>
     <div class="facts" data-facts="${esc(c.id)}" hidden></div>
     ${links(c)}
   </div>`;
 }
+function langShort(c){ const l = String(c.language || "").toLowerCase(); return l.startsWith("deu") ? "DE" : l.startsWith("jap") ? "JP" : l.startsWith("fr") ? "FR" : "EN"; }
+function langLong(c){ return { DE: "Deutsch", JP: "Japanisch", FR: "Französisch", EN: "Englisch" }[langShort(c)]; }
+function setReal(id){
+  const c = coll.find(x => x.id === id); if(!c) return;
+  const inp = document.querySelector(`[data-real="${CSS.escape(id)}"]`);
+  const v = parseFloat(String(inp ? inp.value : "").replace(/[^0-9,.]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", "."));
+  if(isFinite(v) && v > 0){ c.real = Math.round(v * 100) / 100; c.realAt = Date.now(); toast(`✓ ${c.name}: ${eur(c.real)} (${langLong(c)}) übernommen`); }
+  else { delete c.real; delete c.realAt; toast("Eigener Preis entfernt – es gilt wieder der ab-Preis aus der Liste"); }
+  saveCard(c); rerender(c); refreshTotals();
+}
+document.addEventListener("keydown", e => { const i = e.target.closest && e.target.closest("[data-real]"); if(i && e.key === "Enter"){ e.preventDefault(); setReal(i.dataset.real); } });
 document.addEventListener("click", e => {
+  const ro = e.target.closest("[data-realok]"); if(ro){ setReal(ro.dataset.realok); return; }
   const sb = e.target.closest("[data-say]"); if(sb){ const c = coll.find(x => x.id === sb.dataset.say); if(c) speakCard(c); return; }
   const d = e.target.closest("[data-del]"); if(d){ removeCard(d.dataset.del); return; }
   const vb = e.target.closest("[data-ver]");
