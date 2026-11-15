@@ -27,7 +27,7 @@ const pricesReady = Promise.all([
   else pill.textContent = "Keine Preisliste";
   coll.forEach(c => attachPrice(c)); refreshTotals();
 });
-ygoPricesReady.then(d => { if(!d) return; coll.forEach(c => { if(c.ygo){ attachPrice(c); rerender(c); } }); refreshTotals(); });
+YGO_HOOKS.prices.push(d => { if(!d) return; coll.forEach(c => { if(c.ygo){ attachPrice(c); rerender(c); } }); refreshTotals(); });
 // Preis an Karte hängen: {low, trend, avg7, avg30, holo:{…}, src}
 function attachPrice(c){
   if(c.ygo) return ygoAttachPrice(c);
@@ -149,8 +149,9 @@ async function removeCard(id){
 const collReady = (async () => {
   try{ coll = (await idb.all()) || []; }catch{ coll = []; }
   coll.sort((a, b) => b.t - a.t);
-  await Promise.all([cardDbReady, opDbReady, ygoDbReady]);
+  // Preise anhängen braucht keine Kartendatenbank -> Sammlung sofort zeigen
   coll.forEach(c => attachPrice(c));
+  if(coll.some(c => c.ygo)) ygoLoad();
   refreshTotals();
   // Kartenbilder für ältere Einträge nachladen (nacheinander, im Hintergrund)
   setTimeout(async () => { for(const c of coll.filter(x => x.img === undefined).slice(0, 300)){ await ensureImg(c); await sleep(150); } }, 3000);
@@ -181,13 +182,49 @@ $("exportBtn").onclick = () => {
   try{ localStorage.setItem("cgd-lastbackup", Date.now()); }catch{} setTimeout(renderColl, 300);
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 };
+// ---- Sicherung einlesen: nur bekannte Felder mit passenden Typen übernehmen (Schutz vor manipulierten Dateien)
+const safeThumb = t => /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(String(t || "")) ? t : "";
+const IMG_OK = /^https:\/\/(assets\.tcgdex\.net|images\.ygoprodeck\.com|limitlesstcg\.nyc3\.cdn\.digitaloceanspaces\.com)\/[\w\-./%]+$/;
+function sanitizeCard(x){
+  if(!x || typeof x !== "object" || Array.isArray(x)) return null;
+  const str = (v, n = 200) => typeof v === "string" ? v.slice(0, n) : undefined;
+  const numv = (v, lo = 0, hi = 1e7) => (typeof v === "number" && isFinite(v) && v >= lo && v <= hi) ? v : undefined;
+  const plain = (v, depth = 0) => {   // nur einfache Daten (Zahlen, Texte, Listen, Objekte), keine Funktionen
+    if(v === null || typeof v === "number" || typeof v === "boolean") return typeof v === "number" && !isFinite(v) ? undefined : v;
+    if(typeof v === "string") return v.slice(0, 2000);
+    if(depth > 4) return undefined;
+    if(Array.isArray(v)) return v.slice(0, 60).map(y => plain(y, depth + 1));
+    if(typeof v === "object"){ const o = {}; for(const [k, y] of Object.entries(v).slice(0, 60)) if(/^[\w-]{1,30}$/.test(k) && k !== "__proto__") o[k] = plain(y, depth + 1); return o; }
+    return undefined;
+  };
+  const id = str(x.id, 40); if(!id || !/^[\w-]+$/.test(id)) return null;
+  const c = { id };
+  for(const k of ["game", "name", "name_en", "name_jp", "number", "set", "set_en", "set_code", "language", "rarity", "cond", "cm_name", "cm_version", "cm_expansion", "cm_exp_slug", "op_effect_de", "op_trigger_de"]) if(str(x[k], 2000) !== undefined) c[k] = str(x[k], 2000);
+  for(const [k, lo, hi] of [["t", 0, 1e14], ["vi", 0, 50], ["qty", 1, 9999], ["buy", 0, 1e6], ["real", 0, 1e6], ["realAt", 0, 1e14]]) if(numv(x[k], lo, hi) !== undefined) c[k] = numv(x[k], lo, hi);
+  if(x.rh === true) c.rh = true;
+  if(x.vAuto) c.vAuto = 1;
+  for(const k of ["db", "op", "ygo"]) if(x[k] && typeof x[k] === "object") c[k] = plain(x[k]);
+  if(Array.isArray(x.pv)) c.pv = x.pv.slice(-35).filter(p => Array.isArray(p) && /^\d{4}-\d\d-\d\d$/.test(p[0]) && numv(p[1]) !== undefined).map(p => [p[0], p[1]]);
+  const th = safeThumb(x.thumb); if(th && th.length < 400000) c.thumb = th;
+  if(typeof x.img === "string"){ const ok = x.img.split(" ").filter(u => IMG_OK.test(u)); if(ok.length) c.img = ok.join(" "); }
+  if(!c.game || !["pokemon", "onepiece", "yugioh"].includes(c.game)) c.game = c.op ? "onepiece" : c.ygo ? "yugioh" : "pokemon";
+  if(!c.name) return null;
+  if(!c.t) c.t = Date.now();
+  return c;
+}
 $("importInput").onchange = async e => {
   const f = e.target.files[0]; e.target.value = ""; if(!f) return;
+  if(f.size > 60e6){ toast("Datei ist zu groß"); return; }
   try{
-    const d = JSON.parse(await f.text()); const cards = Array.isArray(d) ? d : d.cards || [];
-    let n = 0;
-    for(const c of cards){ if(!c || !c.id || coll.some(x => x.id === c.id)) continue; attachPrice(c); coll.push(c); await saveCard(c); n++; }
-    coll.sort((a, b) => b.t - a.t); refreshTotals(); renderColl(); toast(`${n} Karten geladen`);
+    const d = JSON.parse(await f.text()); const cards = Array.isArray(d) ? d : (d && Array.isArray(d.cards) ? d.cards : []);
+    let n = 0, bad = 0;
+    for(const raw of cards.slice(0, 20000)){
+      const c = sanitizeCard(raw);
+      if(!c){ bad++; continue; }
+      if(coll.some(x => x.id === c.id)) continue;
+      attachPrice(c); coll.push(c); await saveCard(c); n++;
+    }
+    coll.sort((a, b) => b.t - a.t); refreshTotals(); renderColl(); toast(`${n} Karten geladen${bad ? ` · ${bad} ungültige übersprungen` : ""}`);
   }catch{ toast("Datei konnte nicht gelesen werden"); }
 };
 
@@ -211,7 +248,7 @@ function cardHTML(c, mode){
     : `<div class="note">${(c.op ? OPP : c.ygo ? YGOP : PP) ? "Für diese Karte steht kein Preis in der Cardmarket-Liste – tippe auf den Cardmarket-Button." : "Preisliste noch nicht geladen (sie wird jeden Morgen aktualisiert)."}</div>`;
   return `<div class="card ${mode || ""}" data-card="${esc(c.id)}">
     <div class="rowc">
-      ${c.img ? `<img class="thumb card-img" src="${esc(imgSrc(c))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-fallback="${esc(imgFallback(c))}">` : c.thumb ? `<img class="thumb" src="${c.thumb}" alt="">` : `<div class="thumb"></div>`}
+      ${c.img ? `<img class="thumb card-img" src="${esc(imgSrc(c))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-fallback="${esc(imgFallback(c))}">` : c.thumb ? `<img class="thumb" src="${esc(safeThumb(c.thumb))}" alt="">` : `<div class="thumb"></div>`}
       <div class="info">
         <h3>${esc(c.name || c.name_en || "Unbekannt")}${c.name_jp && c.name_jp !== c.name ? ` <span style="font-weight:400;color:var(--muted);font-size:13px">${esc(c.name_jp)}</span>` : ""}</h3>
         <div class="meta"><span class="game g-${esc(c.game || "pokemon")}">${{ onepiece: "One Piece", yugioh: "Yu-Gi-Oh!" }[c.game] || "Pokémon"}</span> <b>${esc(code)}</b>${c.set ? " · " + esc(c.set) : ""}${c.rarity && c.ygo ? " · " + esc(c.rarity) : ""}${c.language ? " · " + esc(c.language) : ""}</div>
@@ -607,7 +644,14 @@ function finishPk(c, language){
 
 // ---------------- Karte übernehmen ----------------
 let seq = 0;
+// Browser bitten, die Sammlung nicht automatisch zu löschen (einmalig, ab der ersten Karte)
+let persistAsked = false;
+async function askPersist(){
+  if(persistAsked || !navigator.storage || !navigator.storage.persist) return; persistAsked = true;
+  try{ if(!(await navigator.storage.persisted())) await navigator.storage.persist(); }catch{}
+}
 function addCard(c, thumb){
+  askPersist();
   // gleiche Karte (gleiche Sprache) schon in der Sammlung -> Anzahl erhöhen
   const same = coll.find(x => identity(x) === identity(c));
   if(same){
@@ -675,8 +719,10 @@ document.addEventListener("click", async e => {
   const src = FAILED.get(id); FAILED.delete(id); if(el) el.remove();
   if(src) await analyzePhoto(src, { keepCam: !!stream, thorough: true });
 });
+// höchstens kurz auf Yu-Gi-Oh!-Daten warten (Pokémon/One Piece sollen nicht ausgebremst werden)
+const ygoSoon = (ms = 1500) => YGO ? Promise.resolve() : Promise.race([ygoLoad(), sleep(ms)]);
 async function handleRead(r, thumb, inline){
-  await Promise.all([cardDbReady, opDbReady, ygoDbReady]);
+  await Promise.all([cardDbReady, opDbReady, (r.kind === "ygo" || r.kind === "ygopass") ? ygoDbReady : Promise.resolve()]);
   const list = candidates(r);
   if(!list.length){ setStatus(`<b>${esc(r.code ? r.code + " " : "")}${esc(r.number || r.id || r.print || r.key)}</b> gelesen, aber nicht in der Datenbank gefunden. Karte etwas näher/gerader halten oder manuell eingeben.`); return false; }
   let pick = list[0];
@@ -721,7 +767,10 @@ async function ocr(canvas, wl){
     poolPut(w);
   }
 }
-const ocrReady = (async () => {
+// Texterkennung erst starten, wenn sie gebraucht wird (Scan-Knopf, Foto) oder das Handy kurz Ruhe hat
+let _ocrP = null;
+const ocrStart = () => _ocrP || (_ocrP = (async () => {
+  $("ocrState").textContent = "Texterkennung wird geladen …";
   try{
     worker = await makeWorker();
     $("ocrState").textContent = "Texterkennung bereit ✓";
@@ -729,7 +778,13 @@ const ocrReady = (async () => {
     setTimeout(() => { for(let i = 1; i < POOL_N; i++) makeWorker().catch(e => console.warn(e)); }, 1500);
     return true;
   }catch(e){ console.error(e); $("ocrState").textContent = "Texterkennung konnte nicht geladen werden – manuelle Eingabe nutzen."; return false; }
-})();
+})());
+const ocrReady = { then(res, rej){ return ocrStart().then(res, rej); } };
+// sobald jemand Richtung Scannen tippt, schon vorladen
+document.addEventListener("pointerdown", e => { if(e.target.closest("#camCover, .camcover, #photoBtn, [for=photoInput], [for=galleryInput], #startBtn, #binderBtn, #barPhoto, .bottombar")){ ocrStart(); ygoLoad(); } }, true);
+const idle = (f, ms) => setTimeout(() => ("requestIdleCallback" in window ? requestIdleCallback(f, { timeout: 4000 }) : f()), ms);
+idle(() => ocrStart(), 2500);
+idle(() => ygoLoad(), 6000);
 // Bildausschnitt vorbereiten: Graustufen, Kontrast strecken, vergrößern
 // chan: "min" = kleinster Farbkanal (weiße Schrift hebt sich von farbigem Grund ab),
 //       "max" = größter Farbkanal (dunkle Schrift auf farbigem Grund) – für Full-Art-/Vollbildkarten
@@ -861,7 +916,7 @@ async function startCam(nextCam){
   };
   if(caps.torch){ const b = $("torchBtn"); b.hidden = false; b.onclick = async () => { const on = !b.classList.contains("on"); try{ await track.applyConstraints({ advanced: [{ torch: on }] }); b.classList.toggle("on", on); }catch{} }; }
   setStatus("<b>Auto-Foto:</b> Karte in den Rahmen legen und Handy ruhig halten (ca. 15–20 cm, Zoom-Regler nutzen). Sobald sie scharf ist, macht die App das Foto selbst. Danach einfach die nächste Karte hinlegen.");
-  await Promise.all([ocrReady, cardDbReady, opDbReady, ygoDbReady]);
+  await Promise.all([ocrReady, cardDbReady, opDbReady, ygoSoon()]);
   if(!loop.running){ loop.running = true; loop().finally(() => loop.running = false); }
 }
 $("startBtn").onclick = () => startCam();
@@ -959,7 +1014,7 @@ function cardThumb(src, x, y, w, h){
 const WL = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/- ";
 const FREE_WL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzÄÖÜäöüßéÉèàç0123456789/-.'’:& ";
 let NAMEIDX = null;   // normierter Kartenname -> Fundstellen
-ygoDbReady.then(() => { NAMEIDX = null; });
+YGO_HOOKS.db.push(() => { NAMEIDX = null; });
 function nameIndex(){
   if(NAMEIDX) return NAMEIDX;
   NAMEIDX = new Map();
@@ -999,11 +1054,13 @@ async function analyzePhoto(file, opts){
   cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height);
   const W = cv.width, H = cv.height;
   // Vorschaubild: Bildmitte im Kartenformat
+  // Karte im Foto suchen und gerade ausschneiden (nicht beim Auto-Foto: da liegt sie schon im Rahmen)
+  const st = (!opts || !opts.quick) && typeof straightenCard === "function" ? straightenCard(cv) : null;
   const tw = Math.min(W, H * 63 / 88), th = tw * 88 / 63;
-  const thumb = cardThumb(cv, (W - tw) / 2, (H - th) / 2, tw, th);
+  const thumb = st ? cardThumb(st.canvas, 0, 0, st.canvas.width, st.canvas.height) : cardThumb(cv, (W - tw) / 2, (H - th) / 2, tw, th);
   const box = photoBox(thumb, "Texterkennung startet …");
   const step = t => { const m = box.querySelector("#anaStep"); if(m) m.textContent = t; };
-  await Promise.all([ocrReady, cardDbReady, opDbReady, ygoDbReady]);
+  await Promise.all([ocrReady, cardDbReady, opDbReady, ygoSoon()]);
   if(!worker){ box.remove(); setStatus("Texterkennung nicht verfügbar – bitte manuell eingeben."); return; }
   const wasPaused = paused; if(!keepCam) paused = true;
   const texts = [];
@@ -1042,7 +1099,17 @@ async function analyzePhoto(file, opts){
     // 1) wahrscheinlichste Stellen zuerst, parallel: unterer Kartenrand (Pokémon/One Piece, dunkle + helle Schrift)
     //    und die Zeile unter dem Bild (Yu-Gi-Oh!-Kürzel)
     const quick = opts && opts.quick;
-    hit = await race("Lese Kürzel + Nummer …", [
+    // 0) Karte wurde gefunden und gerade gerückt: dort sitzen Nummer/Kürzel an festen Stellen
+    if(st){
+      const C = st.canvas, CW = C.width, CH = C.height;
+      hit = await race("Karte erkannt – lese Nummer …", [
+        () => readArea(C, 0, CH * 0.85, CW, CH * 0.15, false, 1600),
+        () => readArea(C, 0, CH * 0.85, CW, CH * 0.15, true, 1600),
+        () => readArea(C, 0, CH * 0.85, CW, CH * 0.15, true, 1800, "min"),
+        ...(YGO ? [() => readArea(C, CW * 0.45, CH * 0.69, CW * 0.55, CH * 0.08, false, 1300)] : [])
+      ]);
+    }
+    if(!hit) hit = await race("Lese Kürzel + Nummer …", [
       () => readArea(cv, 0, H * 0.78, W, H * 0.22, false, 1500),
       () => readArea(cv, 0, H * 0.78, W, H * 0.22, true, 1500),
       ...(YGO ? [() => readArea(cv, W * 0.3, H * 0.62, W * 0.7, H * 0.17, false, 1300)] : [])
@@ -1217,7 +1284,8 @@ $("manualForm").onsubmit = async e => {
 
 
 // ---------------- Start ----------------
-Promise.all([collReady, pricesReady, ygoPricesReady]).then(() => {
+Promise.all([collReady, pricesReady]).then(async () => {
+  if(coll.some(c => c.ygo)) await ygoPricesReady;
   const ds = [PP && PP.date, OPP && OPP.date, YGOP && YGOP.date].filter(Boolean).sort();
   recordHistory(ds[ds.length - 1]);
   const latest = coll.slice(0, 5);
@@ -1226,7 +1294,7 @@ Promise.all([collReady, pricesReady, ygoPricesReady]).then(() => {
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
 // ---------------- Update-Knopf ----------------
-const APP_FILES = ["./", "index.html", "app.js", "lib/cards.js", "lib/ygo.js", "lib/collection.js", "lib/sounds.js", "sw.js", "manifest.webmanifest", "version.json"];
+const APP_FILES = ["./", "index.html", "app.js", "lib/cards.js", "lib/ygo.js", "lib/collection.js", "lib/sounds.js", "lib/cardfind.js", "sw.js", "manifest.webmanifest", "version.json"];
 const getVer = () => { try{ return localStorage.getItem("cgd-ver") || ""; }catch{ return ""; } };
 const setVer = v => { try{ localStorage.setItem("cgd-ver", v); }catch{} };
 async function latestVersion(){

@@ -2,6 +2,8 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; connect-src 'self' blob: data: https://api.tcgdex.net; img-src 'self' data: blob: https://assets.tcgdex.net https://images.ygoprodeck.com https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com; style-src 'self' 'unsafe-inline'; media-src 'self' blob: data:; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>CardGrab Device – Karten-Scanner</title>
 <meta name="theme-color" content="#0a0916">
@@ -320,6 +322,7 @@
 <script src="lib/ygo.js"></script>
 <script src="lib/collection.js"></script>
 <script src="lib/sounds.js"></script>
+<script src="lib/cardfind.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

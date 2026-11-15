@@ -1,13 +1,13 @@
 // CardGrab Device – Offline-Cache. App-Dateien & Texterkennung: Cache zuerst; Preise & Seite: Netz zuerst.
-const V = "cgd-v30";
-const CORE = ["./", "index.html", "legal.html", "app.js", "lib/cards.js", "lib/ygo.js", "lib/collection.js", "lib/sounds.js", "lib/tesseract.min.js", "lib/worker.min.js", "carddb.json", "opdb.json",
+const V = "cgd-v31";
+const CORE = ["./", "index.html", "legal.html", "app.js", "lib/cards.js", "lib/ygo.js", "lib/collection.js", "lib/sounds.js", "lib/cardfind.js", "lib/tesseract.min.js", "lib/worker.min.js", "carddb.json", "opdb.json",
   "cardgrab-logo-sm.webp", "cardgrab-logo-md.webp", "manifest.webmanifest", "icons/icon-192.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(V).then(c => c.addAll(CORE)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== V).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", e => {
   const u = new URL(e.request.url);
   if(e.request.method !== "GET" || u.origin !== location.origin) return;
-  const netFirst = /prices-|version\.json|index\.html$|\/$|app\.js$|cards\.js$|ygo\.js$|collection\.js$|sounds\.js$|sw\.js$/.test(u.pathname);
+  const netFirst = /prices-|version\.json|index\.html$|\/$|app\.js$|cards\.js$|ygo\.js$|collection\.js$|sounds\.js$|cardfind\.js$|sw\.js$/.test(u.pathname);
   // große Daten, die sich ändern: sofort aus dem Speicher, im Hintergrund aktualisieren
   if(/ygodb\.json|op-de\.json|\/ygotext\/|\/facts\//.test(u.pathname)){
     e.respondWith(caches.open(V).then(async x => {
