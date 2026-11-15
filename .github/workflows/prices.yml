@@ -18,16 +18,17 @@ concurrency:
 
 jobs:
   update-and-deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04          # feste Version statt "latest" – kein Überraschungs-Wechsel
+    timeout-minutes: 60
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Texterkennung (Tesseract-Kern) bereitstellen
         run: |
@@ -35,12 +36,15 @@ jobs:
           mkdir -p site/lib/core
           cp node_modules/tesseract.js-core/tesseract-core-simd-lstm.wasm.js node_modules/tesseract.js-core/tesseract-core-lstm.wasm.js site/lib/core/
 
+      # Die folgenden Datenschritte dürfen einzeln ausfallen – dann wird die Version vom Vortag übernommen.
       - name: Vorlese-Daten (TCGdex) bauen
+        continue-on-error: true
         run: |
           git clone --depth 1 https://github.com/tcgdex/cards-database.git /tmp/tcgdex
           node scripts/build-facts.mjs /tmp/tcgdex/data site/facts
 
       - name: Yu-Gi-Oh!-Datenbank (YGOPRODeck) bauen
+        continue-on-error: true
         run: node scripts/build-ygo.mjs
 
       - name: Selbst gespeicherte Kartenbilder entfernen (Bilder werden nur verlinkt)
@@ -51,12 +55,20 @@ jobs:
           rm -rf site/img
 
       - name: Kartentexte ins Deutsche übersetzen (offline, mit Cache)
+        continue-on-error: true
         run: |
           pip install -q ctranslate2 sentencepiece
           python3 scripts/translate-de.py
 
       - name: Cardmarket-Preise laden
+        continue-on-error: true
         run: node scripts/update-prices.mjs
+
+      - name: Ausgefallene Daten von der Live-Seite übernehmen
+        run: bash scripts/ensure-data.sh
+
+      - name: Prüfung vor dem Veröffentlichen
+        run: node scripts/check-site.mjs
 
       - name: Preise speichern
         run: |
@@ -67,7 +79,7 @@ jobs:
           git push || true
 
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: site
       - id: deploy
