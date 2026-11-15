@@ -9,7 +9,9 @@ const [root, out] = process.argv.slice(2);
 if(!root || !out){ console.error("Aufruf: node build-facts.mjs <data> <out>"); process.exit(1); }
 fs.mkdirSync(out, { recursive: true });
 
-const pick = o => (o && typeof o === "object") ? (o.de || o.en || "") : (o || "");
+// Deutsch bevorzugt; nur englisch vorhanden → mit \u0001 markieren, translate-de.py übersetzt das später
+const pick = o => (o && typeof o === "object") ? (o.de || (o.en ? "\u0001" + o.en : "")) : (o || "");
+const pickName = o => (o && typeof o === "object") ? (o.de || "") : "";
 function load(file){
   let src = fs.readFileSync(file, "utf8");
   src = src.replace(/^\s*import .*$/mg, "").replace(/export default \w+\s*;?/g, "")
@@ -35,6 +37,7 @@ for(const serie of fs.readdirSync(root)){
       try{
         const c = load(path.join(cdir, cf));
         const e = {};
+        const nm = pickName(c.name); if(nm) e.n = nm;
         if(c.hp) e.hp = c.hp;
         if(c.types && c.types.length) e.t = c.types;
         if(c.stage) e.st = c.stage;
@@ -42,7 +45,7 @@ for(const serie of fs.readdirSync(root)){
         if(c.abilities && c.abilities.length) e.ab = c.abilities.map(a => [pick(a.name), pick(a.effect)]);
         if(c.weaknesses && c.weaknesses.length){ e.w = c.weaknesses.map(w => w.type); e.wv = c.weaknesses.map(w => w.value || ""); }
         if(c.resistances && c.resistances.length) e.rs = c.resistances.map(r => [r.type, r.value || ""]);
-        if(c.evolveFrom) e.ef = pick(c.evolveFrom);
+        if(c.evolveFrom) e.ef = pickName(c.evolveFrom) || (c.evolveFrom.en || "");
         if(c.suffix) e.sx = c.suffix;
         if(c.retreat !== undefined) e.r = c.retreat;
         if(c.effect) e.e = pick(c.effect);
