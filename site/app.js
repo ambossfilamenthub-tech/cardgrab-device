@@ -618,6 +618,7 @@ function addCard(c, thumb){
     const t = document.createElement("div"); t.innerHTML = cardHTML(same, "latest"); $("results").prepend(t.firstElementChild);
     if(navigator.vibrate) navigator.vibrate([40, 40, 40]);
     toast(`✓ ${same.name} – jetzt ${same.qty}× in der Sammlung`);
+    priceSound(valueOf(same));
     return;
   }
   c.id = "d" + Date.now().toString(36) + (seq++).toString(36);
@@ -630,6 +631,7 @@ function addCard(c, thumb){
   if(navigator.vibrate) navigator.vibrate(60);
   guessOpVariant(c).finally(() => ensureImg(c));
   toast(`✓ ${c.name} · ${c.op ? c.op.id : c.ygo ? c.number : cmCode(c)} · ${eur(valueOf(c))}`);
+  priceSound(valueOf(c));
 }
 function chooseFrom(list, thumb, why){
   return new Promise(res => {
@@ -1224,7 +1226,7 @@ Promise.all([collReady, pricesReady, ygoPricesReady]).then(() => {
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
 // ---------------- Update-Knopf ----------------
-const APP_FILES = ["./", "index.html", "app.js", "lib/cards.js", "lib/ygo.js", "lib/collection.js", "sw.js", "manifest.webmanifest", "version.json"];
+const APP_FILES = ["./", "index.html", "app.js", "lib/cards.js", "lib/ygo.js", "lib/collection.js", "lib/sounds.js", "sw.js", "manifest.webmanifest", "version.json"];
 const getVer = () => { try{ return localStorage.getItem("cgd-ver") || ""; }catch{ return ""; } };
 const setVer = v => { try{ localStorage.setItem("cgd-ver", v); }catch{} };
 async function latestVersion(){
