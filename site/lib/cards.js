@@ -62,7 +62,9 @@ function links(c){
   const ebay = `<a class="alt" href="https://www.ebay.de/sch/i.html?_nkw=${encodeURIComponent([c.name, code || c.number, "pokemon"].filter(Boolean).join(" "))}&LH_Sold=1&LH_Complete=1" target="_blank" rel="noopener">eBay verkauft ↗</a>`;
   const del = `<button data-del="${esc(c.id)}">Entfernen</button>`;
   if(c.db && c.db.code){
-    const h = c.db;
+    // Versionsnummer aus Cardmarkets täglicher Produktliste (genauer als die gespeicherte Datenbank)
+    const vv = typeof PP !== "undefined" && PP && PP.v && PP.v[c.db.cm];
+    const h = vv ? { ...c.db, ver: vv[0], nver: vv[1], exact: true } : c.db;
     const lid = /^\d+$/.test(h.lid) && /^(sv|me|swsh|30th|202[1-9])/.test(h.sid || "") ? h.lid.padStart(3, "0") : h.lid;
     const search = S + encodeURIComponent(`${h.code} ${lid}`);
     // Direkte Kartenseite nur dort, wo Cardmarkets Adressschema geprüft ist (Karmesin & Purpur, Mega-Entwicklung,
@@ -73,6 +75,13 @@ function links(c){
       return `<div class="links">
         <a class="cm" href="${search}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (${esc(h.code + " " + lid)}) ↗</a>
         <a class="alt" href="${dbUrl(c, false, h.nver > 1 ? h.ver : 0)}" target="_blank" rel="noopener">Direktlink (Versuch) ↗</a>${ebay}${del}</div>`;
+    }
+    if(h.exact && h.nver > 1){
+      const vbtn = Array.from({length: h.nver}, (_, i) => i + 1 === h.ver ? "" : `<a class="alt" style="flex:0 0 auto;min-width:54px" href="${dbUrl(c, false, i + 1)}" target="_blank" rel="noopener">V${i + 1}</a>`).join("");
+      return `<div class="links">
+        <a class="cm" href="${dbUrl(c, false, h.ver)}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (V${h.ver} · ${esc(c.cond || "NM")} · DE) ↗</a>
+        <div style="flex:1 1 100%;font-size:11.5px;color:var(--muted)">Cardmarket führt diese Karte ${h.nver}× (z. B. mit Stempel/Promo). Andere Versionen:</div>
+        ${vbtn}<a class="alt" href="${search}" target="_blank" rel="noopener">Suche ${esc(h.code + " " + lid)} ↗</a>${ebay}${del}</div>`;
     }
     if(!h.nver || h.nver < 2){
       return `<div class="links">
