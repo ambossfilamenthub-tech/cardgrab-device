@@ -43,10 +43,12 @@ jobs:
       - name: Yu-Gi-Oh!-Datenbank (YGOPRODeck) bauen
         run: node scripts/build-ygo.mjs
 
-      - name: Kartenbilder speichern (One Piece, Yu-Gi-Oh!)
+      - name: Selbst gespeicherte Kartenbilder entfernen (Bilder werden nur verlinkt)
         run: |
-          pip install -q pillow
-          python3 scripts/fetch-images.py
+          git config user.name "cardgrab-bot"
+          git config user.email "actions@users.noreply.github.com"
+          if git ls-files --error-unmatch site/img >/dev/null 2>&1; then git rm -r -q site/img data/img-missing.json || true; fi
+          rm -rf site/img
 
       - name: Kartentexte ins Deutsche übersetzen (offline, mit Cache)
         run: |
@@ -60,8 +62,8 @@ jobs:
         run: |
           git config user.name "cardgrab-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add site/prices-*.json data/tr-de.json data/img-missing.json site/img
-          git diff --cached --quiet || git commit -m "Preise $(date -u +%F)"
+          git add site/prices-*.json data/tr-de.json
+          git diff --cached --quiet || git commit -q -m "Preise $(date -u +%F)"
           git push || true
 
       - uses: actions/configure-pages@v5
