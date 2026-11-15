@@ -542,21 +542,22 @@ async function loop(){
       let motion = 99;
       if(prev){ let m = 0; for(let i = 0; i < g.length; i++) m += Math.abs(g[i] - prev[i]); motion = m / g.length; }
       prev = g;
-      peak = Math.max(sharp, peak * 0.97);
+      peak = Math.max(sharp, peak * 0.92);
       const present = contrast > 18;
       if(!armed){
         // nach einem Foto: erst wieder auslösen, wenn eine andere Karte im Rahmen liegt
-        if(Date.now() - lastShotAt > 1500 && (motion > 14 || !present || sharp < lastShotSharp * 0.45)){ armed = true; steady = 0; }
+        if(Date.now() - lastShotAt > 1200 && (motion > 18 || !present || sharp < lastShotSharp * 0.45)){ armed = true; steady = 0; }
         $("readOut").textContent = "✓ Foto gemacht – nächste Karte in den Rahmen";
       } else {
-        const good = present && motion < 5 && sharp > 25 && sharp >= peak * 0.8;
+        // locker: leichte Handbewegung ist ok, Bild muss nur halbwegs scharf sein
+        const good = present && motion < 14 && sharp > 14 && sharp >= peak * 0.6;
         steady = good ? steady + 1 : 0;
         $("frame").classList.toggle("focus", steady > 0);
-        $("readOut").textContent = !present ? "Karte in den Rahmen halten" : motion >= 5 ? "Ruhig halten …" : sharp < 25 ? "Wird scharf gestellt …" : steady ? `Scharf ✓ – Foto in ${Math.max(0, 3 - steady)} …` : "Fokussiere …";
-        if(steady >= 3){ await autoShot(v, X, Y, Wd, Hd, sharp); prev = null; }
+        $("readOut").textContent = !present ? "Karte in den Rahmen halten" : motion >= 14 ? "Etwas ruhiger halten …" : sharp <= 14 ? "Wird scharf gestellt …" : steady ? "Scharf ✓ – Foto!" : "Fokussiere …";
+        if(steady >= 2){ await autoShot(v, X, Y, Wd, Hd, sharp); prev = null; }
       }
     }catch(e){ console.warn(e); }
-    await sleep(110);
+    await sleep(60);
   }
 }
 async function autoShot(v, X, Y, Wd, Hd, sharp){
