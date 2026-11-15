@@ -1,6 +1,6 @@
 // CardGrab Device – Vorlese-Daten (KP, Attacken, Schaden, Effekte) aus TCGdex bauen
 // Aufruf: node scripts/build-facts.mjs <pfad-zu-tcgdex/cards-database/data> <ausgabe-ordner>
-// Ergebnis: <ausgabe>/<setId>.json = { "<Nr>": { hp, t, st, a:[[name, schaden, effekt]], ab:[[name, effekt]], w, r, e } }
+// Ergebnis: <ausgabe>/<setId>.json = { "<Nr>": { hp, t, st, a:[[name, schaden, effekt, kosten[]]], ab:[[name, effekt]], w, wv, rs, r, e, ef } }
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
@@ -38,9 +38,12 @@ for(const serie of fs.readdirSync(root)){
         if(c.hp) e.hp = c.hp;
         if(c.types && c.types.length) e.t = c.types;
         if(c.stage) e.st = c.stage;
-        if(c.attacks && c.attacks.length) e.a = c.attacks.map(a => [pick(a.name), a.damage ?? "", pick(a.effect)]);
+        if(c.attacks && c.attacks.length) e.a = c.attacks.map(a => [pick(a.name), a.damage ?? "", pick(a.effect), a.cost || []]);
         if(c.abilities && c.abilities.length) e.ab = c.abilities.map(a => [pick(a.name), pick(a.effect)]);
-        if(c.weaknesses && c.weaknesses.length) e.w = c.weaknesses.map(w => w.type);
+        if(c.weaknesses && c.weaknesses.length){ e.w = c.weaknesses.map(w => w.type); e.wv = c.weaknesses.map(w => w.value || ""); }
+        if(c.resistances && c.resistances.length) e.rs = c.resistances.map(r => [r.type, r.value || ""]);
+        if(c.evolveFrom) e.ef = pick(c.evolveFrom);
+        if(c.suffix) e.sx = c.suffix;
         if(c.retreat !== undefined) e.r = c.retreat;
         if(c.effect) e.e = pick(c.effect);
         if(c.trainerType) e.tt = c.trainerType;
