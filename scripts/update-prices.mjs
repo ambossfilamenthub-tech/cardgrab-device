@@ -51,19 +51,23 @@ async function pokemon(){
              num(row, "low-holo", "lowHolo"), num(row, "trend-holo", "trendHolo"), num(row, "avg30-holo", "avg30Holo")].map(r2);
     hit++;
   }
-  writeJson("prices-pokemon.json", { date: (pg.createdAt || today()).slice(0, 10), n: hit, p });
-  // Diagnose: wie benennt Cardmarket Versionen? (Beispiel Pikachu TEF 051 = 760681)
+  // Versionen wie Cardmarket sie nummeriert (…/Pikachu-V1-TEF051): gleiche Erweiterung + gleicher Name,
+  // V1, V2 … nach Produkt-ID. Kommen neue Versionen dazu (z. B. Pokémon-Day-Stempel), stimmt der Link trotzdem.
+  const v = {};
   try{
     const pl = list(await getJson("list", GAME.pokemon), "products", "productList");
-    const me = pl.find(x => Number(x.idProduct) === 760681);
-    if(me){
-      console.log("  DIAG Produkt:", JSON.stringify(me));
-      const same = pl.filter(x => x.idExpansion === me.idExpansion && String(x.name).startsWith("Pikachu"));
-      console.log("  DIAG gleiche Erweiterung:", JSON.stringify(same.slice(0, 12)));
-      const meta = pl.filter(x => x.idMetacard === me.idMetacard).slice(0, 12);
-      console.log("  DIAG gleiche Metakarte:", JSON.stringify(meta));
+    const grp = new Map();
+    for(const x of pl){ const k = x.idExpansion + "|" + x.name; if(!grp.has(k)) grp.set(k, []); grp.get(k).push(Number(x.idProduct)); }
+    const dup = new Set();   // Karten, die in carddb mehrfach unter derselben Nummer stehen
+    for(const cards of Object.values(cdb.c)){ const seen = new Map(); for(const e of cards){ seen.set(e[0], (seen.get(e[0]) || 0) + 1); } for(const e of cards) if(seen.get(e[0]) > 1 && e[1]) dup.add(Number(e[1])); }
+    for(const ids of grp.values()){
+      ids.sort((a, b) => a - b);
+      ids.forEach((id, i) => { if(wanted.has(id) && (ids.length > 1 || dup.has(id))) v[id] = ids.length > 1 ? [i + 1, ids.length] : [0, 1]; });
     }
-  }catch(e){ console.log("  DIAG Fehler", e.message); }
+  }catch(e){ console.log("  ⚠ Versionen nicht ermittelt:", e.message); }
+  writeJson("prices-pokemon.json", { date: (pg.createdAt || today()).slice(0, 10), n: hit, p, v });
+  console.log(`  Pokémon: Versionsnummern für ${Object.keys(v).length} Karten`);
+
   console.log(`  Pokémon: ${rows.length} Preise geladen, ${hit} passen zu Karten der Datenbank (${wanted.size} bekannt)`);
 }
 
