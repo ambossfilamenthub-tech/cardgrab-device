@@ -175,8 +175,22 @@ const FACTS = new Map();
 const TYPE_DE = { Grass: "Pflanze", Fire: "Feuer", Water: "Wasser", Lightning: "Elektro", Psychic: "Psycho", Fighting: "Kampf", Darkness: "Finsternis", Metal: "Metall", Fairy: "Fee", Dragon: "Drache", Colorless: "Farblos" };
 const STAGE_DE = { Basic: "Basis-Pokémon", Stage1: "Phase 1", Stage2: "Phase 2", BREAK: "TURBO", MEGA: "Mega", VMAX: "VMAX", VSTAR: "VSTAR", "LEVEL-UP": "Level-Up", Restored: "Wiederbelebt" };
 const SYM = { G: "Pflanzen", R: "Feuer", W: "Wasser", L: "Elektro", P: "Psycho", F: "Kampf", D: "Finsternis", M: "Metall", Y: "Feen", N: "Drachen", C: "Farblos" };
-const sayClean = t => String(t || "").replace(/\s*\(([^)]*)\)\s*/g, ", $1, ").replace(/,\s*([.,])/g, "$1").replace(/\{([A-Z])\}(\s*-?\s*Energie)?/g, (m, k) => " " + (SYM[k] || k) + "-Energie ").replace(/\s+/g, " ").trim();
+const sayClean = t => String(t || "").replace(/\u0001/g, "").replace(/\s*\(([^)]*)\)\s*/g, ", $1, ").replace(/,\s*([.,])/g, "$1").replace(/\{([A-Z])\}(\s*-?\s*Energie)?/g, (m, k) => " " + (SYM[k] || k) + "-Energie ").replace(/\s+/g, " ").trim();
 const dmgText = d => { const s = String(d ?? "").trim(); if(!s) return ""; return s.replace(/\+$/, " plus").replace(/[×x]$/, " mal").replace(/-$/, " minus") + " Schaden"; };
+let OPDE = null;
+function opDe(){ return OPDE || (OPDE = fetch("op-de.json").then(r => r.ok ? r.json() : {}).catch(() => ({}))); }
+async function opTexts(o){ const d = (await opDe())[o.id]; return { eff: (d && d[0]) || o.effect || "", trg: (d && d[1]) || o.trigger || "" }; }
+// Zahlen als deutsche Wörter, damit jede Stimme z. B. "hundertzwanzig" flüssig spricht
+const ZW = ["null","ein","zwei","drei","vier","fünf","sechs","sieben","acht","neun","zehn","elf","zwölf","dreizehn","vierzehn","fünfzehn","sechzehn","siebzehn","achtzehn","neunzehn"];
+const ZZ = ["","","zwanzig","dreißig","vierzig","fünfzig","sechzig","siebzig","achtzig","neunzig"];
+function zahl(n){
+  if(n < 20) return ZW[n];
+  if(n < 100){ const e = n % 10; return (e ? ZW[e] + "und" : "") + ZZ[Math.floor(n / 10)]; }
+  if(n < 1000){ const r = n % 100; return (Math.floor(n / 100) === 1 ? "" : ZW[Math.floor(n / 100)]) + "hundert" + (r ? zahl(r) : ""); }
+  if(n < 1e6){ const r = n % 1000, t = Math.floor(n / 1000); return (t === 1 ? "" : zahl(t)) + "tausend" + (r ? zahl(r) : ""); }
+  return String(n);
+}
+const sayNums = t => String(t).replace(/(\d{1,3}(?:\.\d{3})+|\d+)(?![.,]\d)/g, (m, d) => { const n = +d.replace(/\./g, ""); return n >= 10 && n < 1e6 ? zahl(n) : m; });
 async function factsFor(sid){
   if(FACTS.has(sid)) return FACTS.get(sid);
   const p = fetch(`facts/${encodeURIComponent(sid)}.json`).then(r => r.ok ? r.json() : null).catch(() => null);
@@ -190,13 +204,14 @@ const opText = t => esc(t || "").replace(/\[([^\]]+)\]/g, (m, k) => `<span class
 async function cardViewHTML(c){
   if(c.op){
     const o = c.op;
+    const tx = await opTexts(o);
     const col = (o.color || "").split("/").map(x => ({ Red: "#d93b3b", Green: "#2f9e57", Blue: "#2f7fd8", Purple: "#8b4fc0", Black: "#333", Yellow: "#e2b829" }[x] || "#777"));
     return `<div class="cv op" style="--c1:${col[0] || "#777"};--c2:${col[1] || col[0] || "#777"}">
       <div class="cv-head"><span class="cv-cost" title="Kosten">${o.cost ?? ""}</span><b class="cv-name">${esc(c.name)}</b><span class="cv-pow">${o.power ? num(o.power) : ""}</span></div>
       <div class="cv-sub">${esc({ Leader: "LEADER", Character: "CHARACTER", Event: "EVENT", Stage: "STAGE" }[o.cat] || o.cat || "")}${o.cat === "Leader" && o.cost != null ? " · " + o.cost + " Leben" : ""}${o.attr ? " · " + esc(o.attr) : ""}</div>
       ${o.counter ? `<div class="cv-counter">Konter +${num(o.counter)}</div>` : ""}
-      ${o.effect ? `<div class="cv-eff">${opText(o.effect)}</div>` : ""}
-      ${o.trigger ? `<div class="cv-eff trig"><span class="kw">Trigger</span> ${opText(o.trigger)}</div>` : ""}
+      ${tx.eff ? `<div class="cv-eff">${opText(tx.eff)}</div>` : ""}
+      ${tx.trg ? `<div class="cv-eff trig"><span class="kw">Trigger</span> ${opText(tx.trg)}</div>` : ""}
       <div class="cv-foot"><span>${esc(o.types || "")}</span><span>${esc(o.id)}</span></div></div>`;
   }
   if(!c.db || !c.db.sid) return "";
@@ -204,20 +219,20 @@ async function cardViewHTML(c){
   if(!e) return "";
   if(e.c && e.c !== "Pokemon"){
     const kind = e.c === "Trainer" ? ({ Item: "ITEM", Supporter: "UNTERSTÜTZER", Stadium: "STADION", Tool: "PKMN-AUSRÜSTUNG" }[e.tt] || "TRAINER") : "ENERGIE";
-    return `<div class="cv tr"><div class="cv-sub">${kind}</div><div class="cv-head"><b class="cv-name">${esc(c.name)}</b></div>
+    return `<div class="cv tr"><div class="cv-sub">${kind}</div><div class="cv-head"><b class="cv-name">${esc(e.n || c.name)}</b></div>
       ${e.e ? `<div class="cv-eff">${esc(sayClean(e.e))}</div>` : ""}<div class="cv-foot"><span></span><span>${esc(cmCode(c))}</span></div></div>`;
   }
   const stage = { Basic: "BASIS", Stage1: "PHASE 1", Stage2: "PHASE 2", VMAX: "VMAX", VSTAR: "VSTAR", MEGA: "MEGA", BREAK: "TURBO" }[e.st] || (e.st || "").toUpperCase();
   const t0 = (e.t || [])[0];
-  const atks = (e.a || []).map(([n, d, eff, cost]) => `<div class="cv-atk"><div class="cv-line"><span class="cv-costs">${(cost || []).map(enIcon).join("")}</span><b>${esc(n)}</b><span class="cv-dmg">${esc(String(d ?? ""))}</span></div>${eff ? `<div class="cv-txt">${esc(sayClean(eff))}</div>` : ""}</div>`).join("");
-  const abs = (e.ab || []).map(([n, eff]) => `<div class="cv-atk ab"><div class="cv-line"><span class="cv-abl">Fähigkeit</span><b>${esc(n)}</b></div><div class="cv-txt">${esc(sayClean(eff))}</div></div>`).join("");
+  const atks = (e.a || []).map(([n, d, eff, cost]) => `<div class="cv-atk"><div class="cv-line"><span class="cv-costs">${(cost || []).map(enIcon).join("")}</span><b>${esc(sayClean(n))}</b><span class="cv-dmg">${esc(String(d ?? ""))}</span></div>${eff ? `<div class="cv-txt">${esc(sayClean(eff))}</div>` : ""}</div>`).join("");
+  const abs = (e.ab || []).map(([n, eff]) => `<div class="cv-atk ab"><div class="cv-line"><span class="cv-abl">Fähigkeit</span><b>${esc(sayClean(n))}</b></div><div class="cv-txt">${esc(sayClean(eff))}</div></div>`).join("");
   const weak = (e.w || []).map((t, i) => enIcon(t) + esc((e.wv || [])[i] || "")).join(" ") || "–";
   const res = (e.rs || []).map(([t, v]) => enIcon(t) + esc(v)).join(" ") || "–";
   const ret = e.r ? Array.from({ length: e.r }, () => enIcon("Colorless")).join("") : "–";
   const [bg] = EN_ICON[t0] || ["#888"];
   return `<div class="cv pk" style="--tc:${bg}">
     <div class="cv-sub">${stage}${e.ef ? ` · entwickelt sich aus ${esc(e.ef)}` : ""}</div>
-    <div class="cv-head"><b class="cv-name">${esc(c.name)}</b><span class="cv-hp"><small>KP</small>${e.hp || ""} ${(e.t || []).map(enIcon).join("")}</span></div>
+    <div class="cv-head"><b class="cv-name">${esc(e.n || c.name)}</b><span class="cv-hp"><small>KP</small>${e.hp || ""} ${(e.t || []).map(enIcon).join("")}</span></div>
     ${abs}${atks}
     <div class="cv-foot"><span>Schwäche ${weak}</span><span>Resistenz ${res}</span><span>Rückzug ${ret}</span></div></div>`;
 }
@@ -270,7 +285,7 @@ function priceStory(c){
 // Nur vorlesen, was auf der Karte steht – in der Reihenfolge der Karte
 const dmgPlain = d => String(d ?? "").trim().replace(/\+$/, " plus").replace(/[×x]$/, " mal").replace(/[−-]$/, " minus");
 async function speechParts(c){
-  const parts = [], de = t => t && parts.push({ t, l: "de-DE" }), en = t => t && parts.push({ t, l: "en-US" });
+  const parts = [], de = t => t && parts.push({ t: sayNums(t), l: "de-DE" }), en = t => t && parts.push({ t, l: "en-US" });
   if(c.op){
     const o = c.op;
     const nm = c.name.replace(/\.(?=[A-Z]\.)/, " ").replace(/\.(?=\S)/g, ". ");
@@ -279,9 +294,11 @@ async function speechParts(c){
     else if(o.cost != null) head.push(`Kosten ${o.cost}.`);
     if(o.power) head.push(`Stärke ${num(o.power)}.`);
     if(o.counter) head.push(`Konter plus ${num(o.counter)}.`);
+    const tx = await opTexts(o);
+    const opSay = t => t.replace(/\]\s*:?\s*/g, ". ").replace(/\[/g, " ").replace(/\.\s*\./g, ".").replace(/\s+/g, " ").trim().replace(/DON!!/g, "DON").replace(/➀|①/g, "1").replace(/➁|②/g, "2").replace(/➂|③/g, "3").replace(/[−-](\d)/g, "minus $1").replace(/\+(\d)/g, "plus $1");
+    if(tx.eff) head.push(opSay(tx.eff));
+    if(tx.trg) head.push("Trigger. " + opSay(tx.trg));
     de(head.join(" "));
-    if(o.effect) en(o.effect.replace(/\[|\]/g, "").replace(/DON!!/g, "DON").replace(/➀|①/g, "1").replace(/➁|②/g, "2"));
-    if(o.trigger){ de("Trigger."); en(o.trigger.replace(/\[|\]/g, "")); }
     return parts;
   }
   if(!c.db || !c.db.sid) return null;
@@ -290,19 +307,19 @@ async function speechParts(c){
   const out = [];
   if(e.c && e.c !== "Pokemon"){
     if(e.c === "Trainer") out.push(({ Item: "Item.", Supporter: "Unterstützer.", Stadium: "Stadion.", Tool: "Pokémon-Ausrüstung." }[e.tt] || "Trainer."));
-    out.push(`${c.name}.`);
+    out.push(`${e.n || c.name}.`);
     if(e.e) out.push(sayClean(e.e));
     de(out.join(" "));
     return parts;
   }
   const stage = { Basic: "Basis", Stage1: "Phase 1", Stage2: "Phase 2", VMAX: "VMAX", VSTAR: "VSTAR", MEGA: "Mega", BREAK: "TURBO" }[e.st];
   if(stage) out.push(`${stage}${e.ef ? ", entwickelt sich aus " + e.ef : ""}.`);
-  out.push(`${c.name}.`);
-  if(e.hp) out.push(`${num(e.hp)} KP.`);
-  for(const [n, eff] of e.ab || []) out.push(`Fähigkeit: ${n}. ${sayClean(eff)}`);
+  out.push(`${e.n || c.name}.`);
+  if(e.hp) out.push(`${e.hp} KP.`);
+  for(const [n, eff] of e.ab || []) out.push(`Fähigkeit: ${sayClean(n)}. ${sayClean(eff)}`);
   for(const [n, d, eff] of e.a || []){
     const dm = dmgPlain(d);
-    out.push(`${n}${dm ? ", " + dm : ""}.${eff ? " " + sayClean(eff) : ""}`);
+    out.push(`${sayClean(n)}${dm ? ", " + dm : ""}.${eff ? " " + sayClean(eff) : ""}`);
   }
   if(e.w && e.w.length) out.push(`Schwäche ${e.w.map((t, i) => (TYPE_DE[t] || t) + " " + String((e.wv || [])[i] || "").replace("×", "mal ").replace("+", "plus ")).join(", ").trim()}.`);
   if(e.rs && e.rs.length) out.push(`Resistenz ${e.rs.map(([t, v]) => (TYPE_DE[t] || t) + " " + String(v).replace("-", "minus ")).join(", ")}.`);
