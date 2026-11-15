@@ -16,12 +16,15 @@ let NAME_RE = null;
 const deName = t => NAME_RE ? t.replace(NAME_RE, m => NAMES.get(m) || m) : t;
 const pick = o => (o && typeof o === "object") ? ((o.de && o.de !== o.en) ? o.de : (o.en ? "\u0001" + o.en : (o.de || ""))) : (o || "");
 const pickName = o => (o && typeof o === "object") ? (o.de || "") : "";
+const CTX = vm.createContext({});
 function load(file){
   let src = fs.readFileSync(file, "utf8");
   src = src.replace(/^\s*import .*$/mg, "").replace(/export default \w+\s*;?/g, "")
            .replace(/const\s+\w+\s*:\s*\w+\s*=/, "module.exports =").replace(/\bset\s*:\s*Set\s*,?/, "");
+  // ein gemeinsamer Kontext statt einem neuen pro Karte (sonst läuft der Speicher voll)
   const m = { exports: {} };
-  vm.runInNewContext(src, { module: m, exports: m.exports }, { timeout: 1000 });
+  const fn = vm.runInContext("(function(module, exports){" + src + "\n})", CTX, { timeout: 1000 });
+  fn(m, m.exports);
   return m.exports;
 }
 const idOf = file => { const s = fs.readFileSync(file, "utf8"); const m = s.match(/\bid\s*:\s*["'`]([^"'`]+)["'`]/); return m ? m[1] : ""; };
