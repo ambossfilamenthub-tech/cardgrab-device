@@ -98,12 +98,20 @@ function renderInsights(){
   const withBuy = coll.filter(c => c.buy > 0), valB = withBuy.reduce((s, c) => s + totalOf(c), 0);
   const mv = moversOf(7);
   const row = m => `<div class="mv" data-jump="${esc(m.c.id)}"><span>${esc(m.c.name)}${qtyOf(m.c) > 1 ? ` <small>${qtyOf(m.c)}×</small>` : ""}</span><b class="${m.d >= 0 ? "up" : "down"}">${signEur(m.d)}${m.pct ? ` <small>(${m.pct > 0 ? "+" : ""}${m.pct.toFixed(0)} %)</small>` : ""}</b></div>`;
-  box.innerHTML = `
+  // Sicherungs-Erinnerung + iPhone-Hinweis (Safari löscht Daten nicht installierter Web-Apps)
+  let last = 0; try{ last = +localStorage.getItem("cgd-lastbackup") || 0; }catch{}
+  const days = last ? Math.floor((Date.now() - last) / 864e5) : null;
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent), installed = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  const warn = [];
+  if(coll.length >= 5 && (days === null || days >= 14)) warn.push(`💾 ${days === null ? "Noch keine Sicherung gespeichert" : `Letzte Sicherung vor ${days} Tagen`} – deine Sammlung liegt nur auf diesem Handy. <button class="lnk" data-backup>Jetzt sichern</button>`);
+  if(ios && !installed && coll.length) warn.push(`📱 Auf dem iPhone löscht Safari die Daten, wenn die Seite ein paar Tage nicht genutzt wird. <b>Teilen □↑ → „Zum Home-Bildschirm“</b> installieren, dann bleibt alles erhalten.`);
+  box.innerHTML = `${warn.map(w => `<div class="warn">${w}</div>`).join("")}
     ${buy > 0 ? `<div class="pl"><span>Einkauf ${eur(buy)} → Wert ${eur(valB)}</span><b class="${valB - buy >= 0 ? "up" : "down"}">${signEur(valB - buy)}</b></div>` : ""}
-    <div class="sub">Wertverlauf</div>${chartSVG(h)}
+    <div class="sub">Wertverlauf <small style="text-transform:none;letter-spacing:0;font-weight:600">· Cardmarket-Richtwerte ohne Gewähr</small></div>${chartSVG(h)}
     ${mv.length ? `<div class="sub">Diese Woche gestiegen</div>${mv.filter(m => m.d > 0).slice(0, 5).map(row).join("") || `<div class="note">–</div>`}
     <div class="sub">Diese Woche gefallen</div>${mv.filter(m => m.d < 0).slice(-5).reverse().map(row).join("") || `<div class="note">–</div>`}` : ""}`;
 }
+document.addEventListener("click", e => { if(e.target.closest("[data-backup]")) $("exportBtn").click(); });
 document.addEventListener("click", e => {
   const j = e.target.closest("[data-jump]"); if(!j) return;
   $("search").value = ""; renderColl();
