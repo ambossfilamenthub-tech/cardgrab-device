@@ -20,6 +20,11 @@
   .brand{font:800 18px/1.05 system-ui,sans-serif;letter-spacing:-.4px}
   .brand span{background:linear-gradient(90deg,var(--accent2),var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent}
   .brand small{display:block;font:700 10px system-ui,sans-serif;letter-spacing:.9px;text-transform:uppercase;color:var(--accent)}
+  .brand .games{display:flex;gap:3px;margin-top:3px;letter-spacing:0}
+  .brand .games i{font:800 9px/1 system-ui,sans-serif;font-style:normal;padding:2px 4px;border-radius:4px;white-space:nowrap}
+  .gp{background:#ffcb05;color:#222}.go{background:#d93b3b;color:#fff}.gy{background:#6b3fa0;color:#fff}
+  .covergames{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:-4px 0 2px}
+  .covergames i{font:800 12px/1 system-ui,sans-serif;font-style:normal;padding:5px 9px;border-radius:999px}
   .pill{margin-left:auto;font:700 11px system-ui,sans-serif;color:var(--muted);border:1px solid var(--line);padding:5px 9px;border-radius:999px;white-space:nowrap}
   .pill.ok{color:var(--good);border-color:rgba(61,220,151,.4)}
   .tabs{display:flex;gap:6px;background:rgba(22,20,42,.7);border:1px solid var(--line);border-radius:16px;padding:5px;margin:12px 0}
@@ -183,7 +188,7 @@
 <div class="wrap">
   <div class="top">
     <img src="cardgrab-logo-sm.webp" alt="CardGrab" width="46" height="38">
-    <div class="brand">Card<span>Grab</span><small>Device</small></div>
+    <div class="brand">Card<span>Grab</span><small>Device</small><div class="games" aria-label="Erkennt Pokémon, One Piece und Yu-Gi-Oh!"><i class="gp">Pokémon</i><i class="go">One Piece</i><i class="gy">Yu-Gi-Oh!</i></div></div>
     <div class="pill" id="pricePill">Preise laden …</div>
   </div>
 
@@ -203,7 +208,8 @@
       <div class="zoomwrap" id="zoomWrap" hidden><span>🔍</span><input type="range" id="zoom" min="1" max="4" step="0.1" value="1.5"><b id="zoomVal">1.5×</b></div>
       <div class="camcover" id="camCover">
         <img src="cardgrab-logo-md.webp" alt="">
-        <p>Foto machen – CardGrab findet die Karte.<br>Alles auf deinem Handy, ohne Upload.</p>
+        <div class="covergames"><i class="gp">Pokémon</i><i class="go">One Piece</i><i class="gy">Yu-Gi-Oh!</i></div>
+        <p>Erkennt Pokémon-, One‑Piece- und Yu‑Gi‑Oh!‑Karten (DE · EN · JP).<br>Foto machen – CardGrab findet die Karte.<br>Alles auf deinem Handy, ohne Upload.</p>
         <label class="btn primary big" for="photoInput">📸 Foto machen</label>
         <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
           <label class="btn secondary small" for="galleryInput">🖼️ Aus Galerie</label>
