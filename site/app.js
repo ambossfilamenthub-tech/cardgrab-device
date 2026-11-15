@@ -540,7 +540,7 @@ async function startCam(nextCam){
     }
   }
   const v = $("video"); v.srcObject = stream; await v.play().catch(() => {});
-  $("camCover").hidden = true; placeFrame();
+  $("camCover").hidden = true; $("closeCam").hidden = false; placeFrame();
   const track = stream.getVideoTracks()[0];
   const caps = track.getCapabilities ? track.getCapabilities() : {};
   try{ if((caps.focusMode || []).includes("continuous")) await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] }); }catch{}
@@ -577,9 +577,17 @@ async function startCam(nextCam){
   if(!loop.running){ loop.running = true; loop().finally(() => loop.running = false); }
 }
 $("startBtn").onclick = () => startCam();
+function stopCam(){
+  if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+  const v = $("video"); v.srcObject = null;
+  $("camCover").hidden = false; $("closeCam").hidden = true; $("torchBtn").hidden = true; $("torchBtn").classList.remove("on"); $("camBtn").hidden = true; $("zoomWrap").hidden = true;
+  $("frame").classList.remove("focus", "hit"); $("readOut").textContent = "–"; steady = 0; armed = true;
+  setStatus("Kamera aus. <b>📸 Foto machen</b> oder <b>🎥 Auto-Foto</b> zum Weiterscannen.");
+}
+$("closeCam").onclick = e => { e.stopPropagation(); stopCam(); };
 $("camBtn").onclick = e => { e.stopPropagation(); startCam(true); };
 $("barScan").onclick = () => $("photoInput").click();
-document.addEventListener("visibilitychange", () => { if(document.hidden && stream){ stream.getTracks().forEach(t => t.stop()); stream = null; $("camCover").hidden = false; } });
+document.addEventListener("visibilitychange", () => { if(document.hidden && stream) stopCam(); });
 
 // Auto-Foto: Schärfe (Laplace-Varianz) + Ruhe im Kartenrahmen messen -> automatisch auslösen
 let armed = true, peak = 0, steady = 0, lastShotSharp = 0, lastShotAt = 0, shotSig = null;
