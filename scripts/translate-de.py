@@ -11,7 +11,9 @@ CACHE = os.path.join(ROOT, "data", "tr-de.json")
 MODEL_URL = "https://argos-net.com/v1/translate-en_de-1_3.argosmodel"
 STUB = "--stub" in sys.argv
 
+CV = "2"  # erhöhen, wenn sich die Vorverarbeitung ändert → alles neu übersetzen
 cache = json.load(open(CACHE, encoding="utf8")) if os.path.exists(CACHE) else {}
+if cache.get("_v") != CV: cache = {"_v": CV}
 
 # One-Piece-Schlüsselwörter (in eckigen Klammern) direkt übersetzen
 OP_KW = {
@@ -64,6 +66,13 @@ def load_model():
     tr = ctranslate2.Translator(mdir, device="cpu", compute_type="int8", inter_threads=2, intra_threads=2)
     return tr, sentencepiece.SentencePieceProcessor(model_file=s_spm), sentencepiece.SentencePieceProcessor(model_file=t_spm), kind
 
+PRE = [(r"\{([^}]+)\} type (card|Character|Event|Stage)s?", r'\2 with the type "\1"'),
+       (r"take an extra turn after this one", "take another turn after this turn"),
+       (r"\bFlip a coin\b", "Toss a coin"), (r"\bIf heads\b", "If the coin shows heads"), (r"\bIf tails\b", "If the coin shows tails")]
+def pre_en(t):
+    for a, b in PRE: t = re.sub(a, b, t)
+    return t
+
 SENT = re.compile(r"(?<=[.!?])\s+(?=[A-Z(\"'])")
 def translate_all(texts):
     todo = sorted({t for t in texts if t and t not in cache})
@@ -75,7 +84,7 @@ def translate_all(texts):
     tr, sp, tp, kind = load_model()
     print("Modell:", kind, flush=True)
     # in Sätze zerlegen, Sätze gebündelt übersetzen
-    sents = sorted({s for t in todo for s in SENT.split(t) if s.strip()})
+    sents = sorted({s for t in todo for s in SENT.split(pre_en(t)) if s.strip()})
     out = {}
     B = 64
     for i in range(0, len(sents), B):
@@ -86,7 +95,7 @@ def translate_all(texts):
             out[s] = tp.decode([x for x in r.hypotheses[0] if x not in ("</s>", "<pad>")]).replace("▁", " ").strip()
         if i % (B * 20) == 0: print(f"  {i}/{len(sents)}", flush=True)
     for t in todo:
-        cache[t] = " ".join(out.get(s, s) for s in SENT.split(t) if s.strip())
+        cache[t] = " ".join(out.get(s, s) for s in SENT.split(pre_en(t)) if s.strip())
 
 IMP = {"Geben": "Gib", "Nehmen": "Nimm", "Sehen": "Sieh", "Werfen": "Wirf", "Helfen": "Hilf", "Treffen": "Triff",
        "Vergessen": "Vergiss", "Lesen": "Lies", "Seien": "Sei", "Haben": "Hab", "Werden": "Werde"}
@@ -110,7 +119,13 @@ def fix_de(t):
     for a, b in [("Pokemon", "Pokémon"), ("Pokémons", "Pokémon"), ("KO'd", "K.O."), ("Knocked Out", "kampfunfähig"),
                  ("am Boden deines Decks", "unter dein Deck"), ("auf den Boden deines Decks", "unter dein Deck"), ("am Boden des Decks", "unter das Deck"),
                  ("von der Oberseite deines Decks", "oben von deinem Deck"), ("ausgeruhte", "ruhende"), ("ausgeruht", "ruhend"),
-                 ("DON!! Karte", "DON!!-Karte")]:
+                 ("DON!! Karte", "DON!!-Karte"), ("Flip eine Münze", "Wirf eine Münze"), ("Wenn Köpfe", "Bei Kopf"), ("Wenn Schwänze", "Bei Zahl"),
+                 ("Köpfe", "Kopf"), ("Schwänze", "Zahl"), ("ausklopfst", "kampfunfähig machst"), ("ausgeklopft", "kampfunfähig"),
+                 ("Schadenszähler", "Schadensmarken"), ("angehängt", "angelegt"), ("anhängen", "anlegen"), ("anbringen", "anlegen"),
+                 ("Wasserenergie", "Wasser-Energie"), ("Feuerenergie", "Feuer-Energie"), ("Grasenergie", "Pflanzen-Energie"),
+                 ("Blitzenergie", "Elektro-Energie"), ("Psychische Energie", "Psycho-Energie"), ("Kampfenergie", "Kampf-Energie"),
+                 ("Dunkelenergie", "Finsternis-Energie"), ("Metallenergie", "Metall-Energie"), ("Farblose Energie", "Farblos-Energie"),
+                 ("Schadenszählern", "Schadensmarken"), ("Bank Pokémon", "Bank-Pokémon"), ("Preiskarte nehmen", "Preiskarte ziehen")]:
         t = t.replace(a, b)
     return t
 
