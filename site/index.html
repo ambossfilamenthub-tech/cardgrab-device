@@ -149,6 +149,30 @@
   .vers{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
   .vers button{font:700 12px system-ui,sans-serif;padding:6px 9px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--muted);cursor:pointer}
   .vers button.on{border-color:rgba(192,132,252,.7);color:#fff;background:rgba(192,132,252,.18)}
+  .own{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:9px}
+  .own .qty{display:flex;align-items:center;gap:2px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .own .qty button{width:34px;height:34px;border:0;background:rgba(255,255,255,.06);color:var(--text);font:800 18px system-ui,sans-serif}
+  .own .qty b{min-width:30px;text-align:center;font:800 14px system-ui,sans-serif}
+  .own select{background:rgba(10,9,22,.6);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:8px 6px;font:600 12.5px system-ui,sans-serif;max-width:140px}
+  .own .buy{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted)}
+  .own .buy input{width:74px;background:rgba(10,9,22,.6);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:8px;font:700 13.5px system-ui,sans-serif}
+  .gain{font:800 13px system-ui,sans-serif;padding:4px 8px;border-radius:8px}
+  .up{color:var(--good)} .down{color:#ff6b81}
+  .gain.up{background:rgba(61,220,151,.12)} .gain.down{background:rgba(255,107,129,.12)}
+  .card.old .own{display:none}
+  .insights{margin:10px 0 4px;padding:10px 12px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.03)}
+  .insights:empty{display:none}
+  .insights .sub{font:800 11px system-ui,sans-serif;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);margin:10px 0 4px}
+  .insights .sub:first-child{margin-top:0}
+  .insights .pl{display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-bottom:4px}
+  .insights .pl b{font-size:15px}
+  .hist{width:100%;height:90px;display:block}
+  .hist .ln{fill:none;stroke-width:2.2;vector-effect:non-scaling-stroke}
+  .hist.up .ln{stroke:var(--good)} .hist.down .ln{stroke:#ff6b81}
+  .hist.up .area{fill:rgba(61,220,151,.12)} .hist.down .area{fill:rgba(255,107,129,.12)}
+  .histlab{display:flex;justify-content:space-between;font-size:11px;color:var(--muted)}
+  .mv{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid rgba(255,255,255,.05);font-size:13px;cursor:pointer}
+  .mv small{color:var(--muted);font-weight:600}
   .note{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.45}
   .links{display:flex;gap:6px;margin-top:11px;flex-wrap:wrap}
   .links a,.links button{font:700 12.5px system-ui,sans-serif;padding:9px 11px;border-radius:11px;text-decoration:none;cursor:pointer}
@@ -218,6 +242,7 @@
         <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
           <label class="btn secondary small" for="galleryInput">🖼️ Aus Galerie</label>
           <button class="btn secondary small" id="startBtn">🎥 Auto-Foto</button>
+          <button class="btn secondary small" id="binderBtn">📒 Ordnerseite</button>
         </div>
         <p id="ocrState" style="font-size:12px">Texterkennung wird geladen …</p>
       </div>
@@ -246,11 +271,13 @@
       <div class="stat"><div class="l">Sammlungswert (ab-Preis)</div><div class="v" id="collVal">0 €</div></div>
       <div class="stat gray"><div class="l">Karten</div><div class="v" id="collCnt">0</div></div>
     </div>
+    <div class="insights" id="insights"></div>
     <div class="tools">
       <input id="search" placeholder="Suchen: Name, Set, Nummer …">
-      <select id="sort"><option value="new">Neueste</option><option value="val">Wert ↓</option><option value="name">Name A–Z</option><option value="set">Set</option></select>
+      <select id="sort"><option value="new">Neueste</option><option value="val">Wert ↓</option><option value="gain">Gewinn ↓</option><option value="name">Name A–Z</option><option value="set">Set</option></select>
     </div>
     <div class="tools">
+      <button class="btn secondary small" id="csvBtn">📊 Verkaufsliste (CSV)</button>
       <button class="btn secondary small" id="exportBtn">⬇️ Sicherung speichern</button>
       <label class="btn secondary small" for="importInput">⬆️ Sicherung laden</label>
     </div>
@@ -276,11 +303,13 @@
 
 <input type="file" id="photoInput" class="vh" accept="image/*" capture="environment">
 <input type="file" id="galleryInput" class="vh" accept="image/*" multiple>
+<input type="file" id="binderInput" class="vh" accept="image/*">
 <input type="file" id="importInput" class="vh" accept="application/json,.json">
 
 <script src="lib/tesseract.min.js"></script>
 <script src="lib/cards.js"></script>
 <script src="lib/ygo.js"></script>
+<script src="lib/collection.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

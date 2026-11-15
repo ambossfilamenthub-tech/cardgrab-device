@@ -49,8 +49,9 @@ const valueOf = c => { if(c.real > 0) return c.real; const p = c.price; if(!p) r
 // ---------------- Offizielles Kartenbild (statt Handyfoto in der Vorschau) ----------------
 // Pokémon: TCGdex (deutsch, sonst englisch) · One Piece: Limitless-Bildarchiv · Yu-Gi-Oh!: YGOPRODeck
 async function findImg(c){
-  if(c.ygo) return `https://images.ygoprodeck.com/images/cards_small/${c.ygo.pc}.jpg`;
-  if(c.op){ const set = (c.op.id.match(/^([A-Z]+\d*)-/) || [])[1] || "P"; return `https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/one-piece/${set}/${c.op.id}_${c.op.jp ? "JP" : "EN"}.webp`; }
+  // eigene, gespeicherte Bilder zuerst (img/…), sonst direkt von der Quelle
+  if(c.ygo) return `img/ygo/${c.ygo.pc}.webp https://images.ygoprodeck.com/images/cards_small/${c.ygo.pc}.jpg`;
+  if(c.op){ const n = opImgName(c); const set = c.op.id.startsWith("P-") ? "P" : c.op.id.split("-")[0]; return `img/op/${n}.webp https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/one-piece/${set}/${n}.webp`; }
   if(c.db && c.db.sid){
     const langs = langShort(c) === "DE" ? ["de", "en"] : ["en", "de"];
     for(const l of langs){
@@ -61,6 +62,42 @@ async function findImg(c){
     }
   }
   return "";
+}
+// One Piece: Bildname der gewählten Version (Parallel/Alt Art = _p1, _p2 …)
+function opVariants(c){ const e = OPDB && OPDB.cards[c.op.id]; if(!e) return [""]; const l = (c.op.jp ? e[13] : e[12]) || e[12] || []; const s = [...new Set(["", ...l.map(v => v[0] || "")])]; return s; }
+function opImgName(c, suf){
+  const vs = opVariants(c);
+  if(suf === undefined){ const n = c.versions && c.versions.length; suf = n && n === vs.length ? vs[Math.min(c.vi || 0, vs.length - 1)] : ""; }
+  return `${c.op.id}${suf ? "_" + suf : ""}_${c.op.jp && !suf ? "JP" : "EN"}`;
+}
+const imgSrc = c => String(c.img || "").split(" ")[0];
+const imgFallback = c => [...String(c.img || "").split(" ").slice(1), c.thumb || "-"].join(" ");
+// Version per Bildvergleich wählen (One Piece: normal / Parallel / Alt Art haben verschiedene Motive)
+const loadImg = u => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = u; });
+function imgVec(im){
+  // Bildmitte (Motiv) klein rechnen, Farbe normiert -> Vergleich unabhängig von Helligkeit
+  const W = 12, H = 14, cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const g = cv.getContext("2d", { willReadFrequently: true });
+  g.drawImage(im, im.width * 0.1, im.height * 0.12, im.width * 0.8, im.height * 0.5, 0, 0, W, H);
+  const d = g.getImageData(0, 0, W, H).data, v = [];
+  for(let ch = 0; ch < 3; ch++){ const a = []; for(let i = ch; i < d.length; i += 4) a.push(d[i]); const m = a.reduce((s, x) => s + x, 0) / a.length; const sd = Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / a.length) || 1; a.forEach(x => v.push((x - m) / sd)); }
+  return v;
+}
+const cosSim = (a, b) => { let s = 0; for(let i = 0; i < a.length; i++) s += a[i] * b[i]; return s / a.length; };
+async function guessOpVariant(c){
+  if(!c.op || !c.thumb || !c.versions || c.versions.length < 2) return;
+  const vs = opVariants(c); if(vs.length !== c.versions.length) return;
+  try{
+    const ref = imgVec(await loadImg(c.thumb));
+    const sc = [];
+    for(const suf of vs){ try{ sc.push(cosSim(ref, imgVec(await loadImg(`img/op/${opImgName(c, suf)}.webp`)))); }catch{ return; } }
+    const order = sc.map((x, i) => [x, i]).sort((a, b) => b[0] - a[0]);
+    if(order[0][0] < 0.25 || order[0][0] - order[1][0] < 0.08) return;   // nicht eindeutig -> Auswahl bleibt beim Nutzer
+    if(order[0][1] !== (c.vi || 0)){
+      c.vi = order[0][1]; c.vAuto = 1; delete c.img; attachPrice(c); saveCard(c); rerender(c); refreshTotals(); ensureImg(c);
+      toast(`✓ ${c.name}: Version V${c.vi + 1} am Bild erkannt`);
+    }
+  }catch{}
 }
 const IMG_BUSY = new Set();
 async function ensureImg(c){
@@ -73,7 +110,9 @@ async function ensureImg(c){
   } finally { IMG_BUSY.delete(c.id); }
 }
 // Tippen aufs Kartenbild: groß anzeigen
-const bigImg = u => u.replace(/\/low\.webp$/, "/high.webp").replace("/cards_small/", "/cards/");
+const bigImg = u => u.replace(/\/low\.webp$/, "/high.webp").replace("/cards_small/", "/cards/")
+  .replace(/^.*\/img\/ygo\/(\d+)\.webp$/, "https://images.ygoprodeck.com/images/cards/$1.jpg")
+  .replace(/^.*\/img\/op\/(((?:OP|ST|EB|PRB)\d+|P)-[^_]+(?:_p\d+)?_(?:EN|JP))\.webp$/, (m, n, set) => `https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/one-piece/${set}/${n}.webp`);
 document.addEventListener("click", e => {
   const im = e.target.closest("img.card-img"); if(!im) return;
   e.stopPropagation();
@@ -84,8 +123,9 @@ document.addEventListener("click", e => {
 // Bild konnte nicht geladen werden -> eigenes Foto zeigen
 document.addEventListener("error", e => {
   const im = e.target; if(!(im instanceof HTMLImageElement) || !im.dataset.fallback) return;
-  const fb = im.dataset.fallback; im.removeAttribute("data-fallback");
-  if(fb === "-") im.replaceWith(Object.assign(document.createElement("div"), { className: im.className })); else im.src = fb;
+  const list = im.dataset.fallback.split(" "), fb = list.shift();
+  if(list.length) im.dataset.fallback = list.join(" "); else im.removeAttribute("data-fallback");
+  if(!fb || fb === "-") im.replaceWith(Object.assign(document.createElement("div"), { className: "thumb" })); else im.src = fb;
 }, true);
 
 // ---------------- Sammlung (IndexedDB, nur auf diesem Gerät) ----------------
@@ -114,22 +154,25 @@ const collReady = (async () => {
   setTimeout(async () => { for(const c of coll.filter(x => x.img === undefined).slice(0, 300)){ await ensureImg(c); await sleep(150); } }, 3000);
 })();
 function refreshTotals(){
-  const sum = coll.reduce((s, c) => s + valueOf(c), 0);
+  const sum = coll.reduce((s, c) => s + totalOf(c), 0), n = coll.reduce((s, c) => s + qtyOf(c), 0);
   $("collVal").textContent = eur(sum) === "–" ? "0 €" : eur(sum); $("barVal").textContent = $("collVal").textContent;
-  $("collCnt").textContent = coll.length;
-  $("barCnt").textContent = `Sammlung: ${coll.length} Karte${coll.length === 1 ? "" : "n"}`;
-  $("tabCount").textContent = coll.length ? `(${coll.length})` : "";
+  $("collCnt").textContent = n;
+  $("barCnt").textContent = `Sammlung: ${n} Karte${n === 1 ? "" : "n"}`;
+  $("tabCount").textContent = n ? `(${n})` : "";
 }
 function renderColl(){
   const q = $("search").value.trim().toLowerCase(), so = $("sort").value;
   let l = coll.filter(c => !q || [c.name, c.name_en, c.set, c.set_code, c.number, c.op && c.op.id, c.ygo && c.ygo.key, { pokemon: "pokemon", onepiece: "one piece", yugioh: "yugioh yu-gi-oh" }[c.game]].join(" ").toLowerCase().includes(q));
-  if(so === "val") l.sort((a, b) => valueOf(b) - valueOf(a));
+  if(so === "val") l.sort((a, b) => totalOf(b) - totalOf(a));
+  else if(so === "gain") l.sort((a, b) => ((totalOf(b) - buyTotalOf(b)) * (b.buy > 0)) - ((totalOf(a) - buyTotalOf(a)) * (a.buy > 0)));
   else if(so === "name") l.sort((a, b) => String(a.name).localeCompare(String(b.name), "de"));
   else if(so === "set") l.sort((a, b) => String(a.set).localeCompare(String(b.set), "de") || String(a.number).localeCompare(String(b.number), "de", { numeric: true }));
   else l.sort((a, b) => b.t - a.t);
+  renderInsights();
   $("collList").innerHTML = l.length ? l.map(c => cardHTML(c, "old")).join("") : `<div class="empty">${coll.length ? "Keine Treffer." : "Noch keine Karten. Scanne deine erste Karte!"}</div>`;
 }
 $("search").oninput = renderColl; $("sort").onchange = renderColl;
+$("csvBtn").onclick = () => csvExport();
 $("exportBtn").onclick = () => {
   const blob = new Blob([JSON.stringify({ app: "CardGrab Device", v: 1, date: new Date().toISOString(), cards: coll.map(persistable) })], { type: "application/json" });
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `cardgrab-sammlung-${new Date().toISOString().slice(0, 10)}.json`; a.click();
@@ -156,7 +199,7 @@ function cardHTML(c, mode){
        <div class="note">Diese Karte gibt es in diesem Set ${c.versions.length}× (verschiedene Seltenheiten) – wähle deine.${c.versions.some(x => x.guess) ? " Zuordnung geschätzt – im Zweifel auf Cardmarket prüfen." : ""}</div>`
     : c.op && c.versions && c.versions.length > 1
     ? `<div class="vers">${c.versions.map((x, i) => `<button data-ver="${esc(c.id)}" data-i="${i}" class="${i === (c.vi || 0) ? "on" : ""}">V${i + 1}${x.pack && x.pack !== (c.op && c.op.id.split("-")[0]) ? " " + esc(x.pack) : ""} · ${eur(x.low || x.trend)}</button>`).join("")}</div>
-       <div class="note">Diese Karte gibt es ${c.versions.length}× (normal, Parallel/Alt Art, Reprints). Wähle die Version mit deinem Motiv – V1 ist meist die normale Karte.${c.versions.some(x => x.guess) ? " Zuordnung der Versionen geschätzt – im Zweifel auf Cardmarket prüfen." : ""}</div>` : "";
+       <div class="note">${c.vAuto ? "✓ Version am Bild erkannt – bitte kurz prüfen. " : ""}Diese Karte gibt es ${c.versions.length}× (normal, Parallel/Alt Art, Reprints). Wähle die Version mit deinem Motiv – V1 ist meist die normale Karte.${c.versions.some(x => x.guess) ? " Zuordnung der Versionen geschätzt – im Zweifel auf Cardmarket prüfen." : ""}</div>` : "";
   const rh = holo ? `<div class="vers"><button data-rh="${esc(c.id)}" data-v="0" class="${!c.rh ? "on" : ""}">Normal</button><button data-rh="${esc(c.id)}" data-v="1" class="${c.rh ? "on" : ""}">Reverse Holo</button></div>` : "";
   const pr = p ? `<div class="prices">
       <div><span>ab ${c.real > 0 ? "(alle)" : p.est ? "(ca.)" : ""}</span><b>${eur(c.rh && p.lowH ? p.lowH : p.low)}</b></div>
@@ -165,15 +208,16 @@ function cardHTML(c, mode){
     : `<div class="note">${(c.op ? OPP : c.ygo ? YGOP : PP) ? "Für diese Karte steht kein Preis in der Cardmarket-Liste – tippe auf den Cardmarket-Button." : "Preisliste noch nicht geladen (sie wird jeden Morgen aktualisiert)."}</div>`;
   return `<div class="card ${mode || ""}" data-card="${esc(c.id)}">
     <div class="rowc">
-      ${c.img ? `<img class="thumb card-img" src="${esc(c.img)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-fallback="${c.thumb ? esc(c.thumb) : "-"}">` : c.thumb ? `<img class="thumb" src="${c.thumb}" alt="">` : `<div class="thumb"></div>`}
+      ${c.img ? `<img class="thumb card-img" src="${esc(imgSrc(c))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-fallback="${esc(imgFallback(c))}">` : c.thumb ? `<img class="thumb" src="${c.thumb}" alt="">` : `<div class="thumb"></div>`}
       <div class="info">
         <h3>${esc(c.name || c.name_en || "Unbekannt")}${c.name_jp && c.name_jp !== c.name ? ` <span style="font-weight:400;color:var(--muted);font-size:13px">${esc(c.name_jp)}</span>` : ""}</h3>
         <div class="meta"><span class="game g-${esc(c.game || "pokemon")}">${{ onepiece: "One Piece", yugioh: "Yu-Gi-Oh!" }[c.game] || "Pokémon"}</span> <b>${esc(code)}</b>${c.set ? " · " + esc(c.set) : ""}${c.rarity && c.ygo ? " · " + esc(c.rarity) : ""}${c.language ? " · " + esc(c.language) : ""}</div>
       </div>
-      <div class="val"><div class="l">${c.real > 0 ? "ab · " + langShort(c) + " ✓" : "ab"}</div><div class="p">${eur(v)}</div></div>
+      <div class="val"><div class="l">${c.real > 0 ? "ab · " + langShort(c) + " ✓" : "ab"}</div><div class="p">${eur(v)}</div>${qtyOf(c) > 1 ? `<div class="l">${qtyOf(c)}× = ${eur(totalOf(c))}</div>` : ""}</div>
     </div>
+    ${ownHTML(c)}
     ${pr}${rh}${vers}
-    <div class="real"><span>Günstigster Preis in <b>${langLong(c)}</b> (DE-Verkäufer, NM) – vom Cardmarket-Button ablesen:</span>
+    <div class="real"><span>Günstigster Preis in <b>${langLong(c)}</b> (DE-Verkäufer, ${esc(c.cond || "NM")}) – vom Cardmarket-Button ablesen:</span>
       <input type="text" inputmode="decimal" data-real="${esc(c.id)}" value="${c.real > 0 ? String(c.real).replace(".", ",") : ""}" placeholder="z. B. 0,12">
       <span class="eur">€</span><button class="btn secondary small" data-realok="${esc(c.id)}">${c.real > 0 ? "Ändern" : "Übernehmen"}</button>
       ${c.real > 0 ? `<small>✓ gilt als Wert · eingetragen ${new Date(c.realAt || Date.now()).toLocaleDateString("de-DE")}</small>` : ""}</div>
@@ -207,7 +251,7 @@ document.addEventListener("click", e => {
   const sb = e.target.closest("[data-say]"); if(sb){ const c = coll.find(x => x.id === sb.dataset.say); if(c) speakCard(c); return; }
   const d = e.target.closest("[data-del]"); if(d){ removeCard(d.dataset.del); return; }
   const vb = e.target.closest("[data-ver]");
-  if(vb){ const c = coll.find(x => x.id === vb.dataset.ver); if(c){ c.vi = +vb.dataset.i; attachPrice(c); saveCard(c); rerender(c); refreshTotals(); } return; }
+  if(vb){ const c = coll.find(x => x.id === vb.dataset.ver); if(c){ c.vi = +vb.dataset.i; delete c.vAuto; if(c.op) delete c.img; attachPrice(c); saveCard(c); rerender(c); refreshTotals(); if(c.op) ensureImg(c); } return; }
   const rb = e.target.closest("[data-rh]");
   if(rb){ const c = coll.find(x => x.id === rb.dataset.rh); if(c){ c.rh = rb.dataset.v === "1"; saveCard(c); rerender(c); refreshTotals(); } }
 });
@@ -561,6 +605,18 @@ function finishPk(c, language){
 // ---------------- Karte übernehmen ----------------
 let seq = 0;
 function addCard(c, thumb){
+  // gleiche Karte (gleiche Sprache) schon in der Sammlung -> Anzahl erhöhen
+  const same = coll.find(x => identity(x) === identity(c));
+  if(same){
+    same.qty = qtyOf(same) + 1; same.t = Date.now(); if(!same.thumb && thumb) same.thumb = thumb;
+    coll = [same, ...coll.filter(x => x !== same)]; saveCard(same); refreshTotals();
+    document.querySelectorAll(`#results [data-card="${CSS.escape(same.id)}"]`).forEach(el => el.remove());
+    document.querySelectorAll("#results .card.latest").forEach(el => { el.classList.remove("latest"); el.classList.add("old"); });
+    const t = document.createElement("div"); t.innerHTML = cardHTML(same, "latest"); $("results").prepend(t.firstElementChild);
+    if(navigator.vibrate) navigator.vibrate([40, 40, 40]);
+    toast(`✓ ${same.name} – jetzt ${same.qty}× in der Sammlung`);
+    return;
+  }
   c.id = "d" + Date.now().toString(36) + (seq++).toString(36);
   c.t = Date.now(); c.thumb = thumb || ""; c.vi = 0;
   attachPrice(c);
@@ -569,7 +625,7 @@ function addCard(c, thumb){
   const t = document.createElement("div"); t.innerHTML = cardHTML(c, "latest");
   $("results").prepend(t.firstElementChild);
   if(navigator.vibrate) navigator.vibrate(60);
-  ensureImg(c);
+  guessOpVariant(c).finally(() => ensureImg(c));
   toast(`✓ ${c.name} · ${c.op ? c.op.id : c.ygo ? c.number : cmCode(c)} · ${eur(valueOf(c))}`);
 }
 function chooseFrom(list, thumb, why){
@@ -1057,6 +1113,52 @@ $("galleryInput").onchange = async e => {
   for(const f of files) await analyzePhoto(f);
 };
 
+// ---------------- Ordnerseite: mehrere Karten auf einem Foto ----------------
+let BINDER = { r: 3, c: 3 };
+$("binderBtn").onclick = () => {
+  const sh = $("sheet");
+  $("sheetIn").innerHTML = `<h4>📒 Ordnerseite fotografieren</h4><p>Wie sind die Karten angeordnet? Fotografiere die Seite gerade von oben, sodass sie das Bild füllt. Leere Fächer werden übersprungen.</p>` +
+    [[3, 3, "3 × 3 (9er-Seite)"], [2, 2, "2 × 2 (4er-Seite)"], [3, 4, "3 × 4 (12er-Seite)"], [2, 3, "2 × 3 – 6 Karten nebeneinander gelegt"], [1, 2, "2 Karten nebeneinander"]]
+      .map(([r, c, t]) => `<button class="opt" data-grid="${r}x${c}"><span>${t}</span><b>${r * c}</b></button>`).join("") +
+    `<button class="opt" data-grid="" style="justify-content:center;color:var(--muted)">Abbrechen</button>`;
+  sh.hidden = false;
+  sh.onclick = e => {
+    const b = e.target.closest("[data-grid]"); if(!b && e.target !== sh) return;
+    sh.hidden = true; sh.onclick = null;
+    if(!b || !b.dataset.grid) return;
+    const [r, c] = b.dataset.grid.split("x").map(Number); BINDER = { r, c };
+    $("binderInput").click();
+  };
+};
+$("binderInput").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ""; if(!f) return;
+  showTab("scan");
+  let bmp; try{ bmp = await createImageBitmap(f, { imageOrientation: "from-image" }); }catch{ bmp = await createImageBitmap(f); }
+  const k = Math.min(1, 4200 / Math.max(bmp.width, bmp.height));
+  const cv = document.createElement("canvas"); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+  cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height);
+  const { r: R, c: C } = BINDER, cw = cv.width / C, ch = cv.height / R;
+  const cells = [];
+  for(let y = 0; y < R; y++) for(let x = 0; x < C; x++){
+    const p = 0.03;   // etwas Rand dazu – Karten sitzen nie exakt im Raster
+    const sx = Math.max(0, (x - p) * cw), sy = Math.max(0, (y - p) * ch), sw = Math.min(cv.width - sx, cw * (1 + 2 * p)), sh = Math.min(cv.height - sy, ch * (1 + 2 * p));
+    const c = document.createElement("canvas"); c.width = Math.round(sw); c.height = Math.round(sh);
+    c.getContext("2d").drawImage(cv, sx, sy, sw, sh, 0, 0, c.width, c.height);
+    if(!isEmptyCell(c)) cells.push(c);
+  }
+  setStatus(`📒 ${cells.length} Karte${cells.length === 1 ? "" : "n"} auf der Seite gefunden – werden nacheinander erkannt …`);
+  for(const c of cells) shotQ.push(c);
+  runQueue();
+};
+// leeres Fach: kaum Struktur im Bild
+function isEmptyCell(c){
+  const t = document.createElement("canvas"); t.width = 40; t.height = 56;
+  const g = t.getContext("2d", { willReadFrequently: true }); g.drawImage(c, c.width * 0.15, c.height * 0.15, c.width * 0.7, c.height * 0.7, 0, 0, 40, 56);
+  const d = g.getImageData(0, 0, 40, 56).data; let s = 0, s2 = 0, n = 0;
+  for(let i = 0; i < d.length; i += 4){ const v = (d[i] + d[i + 1] + d[i + 2]) / 3; s += v; s2 += v * v; n++; }
+  const m = s / n; return Math.sqrt(Math.max(0, s2 / n - m * m)) < 12;
+}
+
 // ---------------- Manuelle Eingabe ----------------
 $("manualForm").onsubmit = async e => {
   e.preventDefault();
@@ -1081,14 +1183,16 @@ $("manualForm").onsubmit = async e => {
 };
 
 // ---------------- Start ----------------
-Promise.all([collReady, pricesReady]).then(() => {
+Promise.all([collReady, pricesReady, ygoPricesReady]).then(() => {
+  const ds = [PP && PP.date, OPP && OPP.date, YGOP && YGOP.date].filter(Boolean).sort();
+  recordHistory(ds[ds.length - 1]);
   const latest = coll.slice(0, 5);
   $("results").innerHTML = latest.map((c, i) => cardHTML(c, i === 0 ? "" : "old")).join("");
 });
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 
 // ---------------- Update-Knopf ----------------
-const APP_FILES = ["./", "index.html", "app.js", "lib/cards.js", "lib/ygo.js", "sw.js", "manifest.webmanifest", "version.json"];
+const APP_FILES = ["./", "index.html", "app.js", "lib/cards.js", "lib/ygo.js", "lib/collection.js", "sw.js", "manifest.webmanifest", "version.json"];
 const getVer = () => { try{ return localStorage.getItem("cgd-ver") || ""; }catch{ return ""; } };
 const setVer = v => { try{ localStorage.setItem("cgd-ver", v); }catch{} };
 async function latestVersion(){
