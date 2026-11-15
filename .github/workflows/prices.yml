@@ -35,6 +35,11 @@ jobs:
           mkdir -p site/lib/core
           cp node_modules/tesseract.js-core/tesseract-core-simd-lstm.wasm.js node_modules/tesseract.js-core/tesseract-core-lstm.wasm.js site/lib/core/
 
+      - name: Vorlese-Daten (TCGdex) bauen
+        run: |
+          git clone --depth 1 https://github.com/tcgdex/cards-database.git /tmp/tcgdex
+          node scripts/build-facts.mjs /tmp/tcgdex/data site/facts
+
       - name: Cardmarket-Preise laden
         run: node scripts/update-prices.mjs
 
