@@ -112,6 +112,10 @@
   .bar .sum{flex:1;min-width:0}
   .bar .sum b{font:800 20px system-ui,sans-serif;display:block;background:linear-gradient(90deg,#9ff3ff,#d8b4fe);-webkit-background-clip:text;background-clip:text;color:transparent}
   .bar .sum small{color:var(--muted);font-size:11.5px}
+  .upd{display:flex;flex-direction:column;align-items:center;gap:7px;margin-top:18px;padding:16px 12px;border-radius:16px;background:var(--panel);border:1px solid var(--line)}
+  .upd .btn{width:100%}
+  .upd small{color:var(--muted);font-size:12px;text-align:center}
+  .upd a{color:#6f6a96;font-size:11.5px}
   footer{text-align:center;color:#6f6a96;font-size:11.5px;margin-top:16px}
 </style>
 </head>
@@ -180,6 +184,11 @@
   </section>
 
   <div class="hint"><b>So funktioniert's:</b> Die Erkennung läuft komplett auf deinem Handy: Die Kamera liest Set-Kürzel und Nummer und sucht die Karte in der eingebauten Datenbank (alle Pokémon-Sets EN/DE, One Piece EN/JP). Die Preise stammen aus der offiziellen Cardmarket-Preisliste, die jeden Morgen neu geladen wird: <b>Trend</b>, <b>ab</b> (günstigstes Angebot insgesamt) und <b>30-Tage-Ø</b>. Für den günstigsten Near-Mint-Preis von Verkäufern aus Deutschland in deiner Sprache tippe auf den Cardmarket-Button. Deine Sammlung bleibt nur auf diesem Gerät – nutze „Sicherung speichern“ als Backup.</div>
+  <div class="upd">
+    <button class="btn secondary" id="updBtn">🔄 Nach Updates suchen</button>
+    <small id="verTxt">Version wird geprüft …</small>
+    <a href="#" id="forceUpd">Neu laden erzwingen</a>
+  </div>
   <footer>CardGrab Device · Grab your cards · ein Teil von CappyGrab</footer>
 </div>
 

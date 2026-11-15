@@ -485,3 +485,49 @@ Promise.all([collReady, pricesReady]).then(() => {
   $("results").innerHTML = latest.map((c, i) => cardHTML(c, i === 0 ? "" : "old")).join("");
 });
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+
+// ---------------- Update-Knopf ----------------
+const APP_FILES = ["./", "index.html", "app.js", "lib/cards.js", "sw.js", "manifest.webmanifest", "version.json"];
+const getVer = () => { try{ return localStorage.getItem("cgd-ver") || ""; }catch{ return ""; } };
+const setVer = v => { try{ localStorage.setItem("cgd-ver", v); }catch{} };
+async function latestVersion(){
+  try{ const d = await fetch("version.json?t=" + Date.now(), { cache: "no-store" }).then(r => r.json()); return d && d.v ? d : null; }catch{ return null; }
+}
+async function checkUpdate(silent){
+  const btn = $("updBtn"), d = await latestVersion();
+  if(!d){ $("verTxt").textContent = `Version ${getVer() || "?"} · offline`; return null; }
+  let cur = getVer(); if(!cur){ setVer(d.v); cur = d.v; }
+  if(d.v !== cur){
+    btn.className = "btn primary"; btn.textContent = `⬆️ Neue Version ${d.v} installieren`;
+    $("verTxt").textContent = `Installiert: ${cur} · Neu: ${d.v}${d.info ? " – " + d.info : ""}`;
+    if(!silent) toast("Neue Version verfügbar – ganz unten auf „Update“ tippen");
+  } else {
+    btn.className = "btn secondary"; btn.textContent = "🔄 Nach Updates suchen";
+    $("verTxt").textContent = `Version ${cur} · aktuell`;
+  }
+  return d;
+}
+async function doUpdate(){
+  const btn = $("updBtn"); btn.disabled = true; btn.textContent = "Wird aktualisiert …";
+  const d = await latestVersion();
+  // neueste Dateien am Zwischenspeicher vorbei laden und alte Kopien entfernen (Texterkennung bleibt gespeichert)
+  await Promise.all(APP_FILES.map(f => fetch(f, { cache: "reload" }).catch(() => {})));
+  try{
+    for(const k of await caches.keys()){ const c = await caches.open(k); for(const f of APP_FILES) await c.delete(new URL(f, location.href).href); }
+  }catch{}
+  try{ const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r => r.update())); }catch{}
+  if(d) setVer(d.v);
+  location.replace("./?u=" + Date.now());
+}
+$("updBtn").onclick = async () => {
+  const d = await latestVersion();
+  if(d && d.v === getVer() && !$("updBtn").classList.contains("primary")){
+    // schon aktuell – trotzdem frisch laden, falls etwas hängt
+    toast("Du hast die neueste Version ✓"); $("verTxt").textContent = `Version ${d.v} · aktuell`;
+    return;
+  }
+  doUpdate();
+};
+$("forceUpd").onclick = e => { e.preventDefault(); doUpdate(); };
+checkUpdate(false);
+document.addEventListener("visibilitychange", () => { if(!document.hidden) checkUpdate(true); });
