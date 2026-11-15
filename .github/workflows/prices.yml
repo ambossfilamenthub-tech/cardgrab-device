@@ -1,0 +1,54 @@
+name: Preise aktualisieren & App veröffentlichen
+
+on:
+  schedule:
+    - cron: "23 6 * * *"   # täglich ~07:23 Uhr deutscher Zeit (Cardmarket veröffentlicht morgens)
+  workflow_dispatch:         # manuell starten: Actions → "Preise aktualisieren" → Run workflow
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Texterkennung (Tesseract-Kern) bereitstellen
+        run: |
+          npm i --no-save --no-package-lock tesseract.js@5.1.1 tesseract.js-core@5.1.1
+          mkdir -p site/lib/core
+          cp node_modules/tesseract.js-core/tesseract-core-simd-lstm.wasm.js node_modules/tesseract.js-core/tesseract-core-lstm.wasm.js site/lib/core/
+
+      - name: Cardmarket-Preise laden
+        run: node scripts/update-prices.mjs
+
+      - name: Preise speichern
+        run: |
+          git config user.name "cardgrab-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add site/prices-*.json
+          git diff --cached --quiet || git commit -m "Preise $(date -u +%F)"
+          git push || true
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
