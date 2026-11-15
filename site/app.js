@@ -380,12 +380,48 @@ function chooseFrom(list, thumb, why){
     sh.onclick = e => { const b = e.target.closest("[data-pick]"); if(!b && e.target !== sh) return; sh.hidden = true; sh.onclick = null; const i = b ? +b.dataset.pick : -1; res(i >= 0 ? list[i] : null); };
   });
 }
-async function handleRead(r, thumb){
+// Auswahl direkt in der Liste (blockiert die Kamera nicht)
+function inlinePick(list, thumb, why){
+  const el = document.createElement("div"); el.className = "card pick";
+  el.innerHTML = `<div class="rowc">${thumb ? `<img class="thumb" src="${thumb}" alt="">` : ""}<div class="info"><h3>❓ Welche Karte ist es?</h3><div class="meta">${esc(why)}</div></div></div>
+    <div class="opts">${list.slice(0, 12).map((x, i) => `<button class="opt" data-i="${i}"><span>${esc(x.label)}<br><small>${esc(x.sub)}</small></span><b>${eur(valueOf(attachPrice(x.c)))}</b></button>`).join("")}
+    <button class="opt none" data-i="-1">Keine davon – verwerfen</button></div>`;
+  el.addEventListener("click", e => {
+    const b = e.target.closest(".opt"); if(!b) return;
+    const i = +b.dataset.i; el.remove();
+    if(i >= 0) addCard(list[i].c, thumb);
+  });
+  $("results").prepend(el);
+}
+// Nicht erkannt: Karte bleibt in der Liste mit "Nochmal" / "Eingeben"
+const FAILED = new Map();
+function failCard(src, thumb, why){
+  const id = "f" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  FAILED.set(id, src);
+  const el = document.createElement("div"); el.className = "card pick fail"; el.dataset.fail = id;
+  el.innerHTML = `<div class="rowc">${thumb ? `<img class="thumb" src="${thumb}" alt="">` : ""}<div class="info"><h3>⚠️ Nicht erkannt</h3><div class="meta">${esc(why)}</div></div></div>
+    <div class="links"><button class="btn secondary small" data-retry="${id}">🔁 Nochmal analysieren</button><button class="btn secondary small" data-type="${id}">✏️ Eingeben</button><button data-drop="${id}">Verwerfen</button></div>`;
+  $("results").prepend(el);
+}
+document.addEventListener("click", async e => {
+  const r = e.target.closest("[data-retry]"), t = e.target.closest("[data-type]"), d = e.target.closest("[data-drop]");
+  const id = (r || t || d) && (r || t || d).dataset[r ? "retry" : t ? "type" : "drop"]; if(!id) return;
+  const el = document.querySelector(`[data-fail="${id}"]`);
+  if(d){ FAILED.delete(id); if(el) el.remove(); return; }
+  if(t){ $("manualInput").focus(); $("manualInput").scrollIntoView({ behavior: "smooth", block: "center" }); return; }
+  const src = FAILED.get(id); FAILED.delete(id); if(el) el.remove();
+  if(src) await analyzePhoto(src, { keepCam: !!stream, thorough: true });
+});
+async function handleRead(r, thumb, inline){
   await Promise.all([cardDbReady, opDbReady]);
   const list = candidates(r);
   if(!list.length){ setStatus(`<b>${esc(r.code ? r.code + " " : "")}${esc(r.number || r.id)}</b> gelesen, aber nicht in der Datenbank gefunden. Karte etwas näher/gerader halten oder manuell eingeben.`); return false; }
   let pick = list[0];
   const sure = r.kind === "op" || (r.strong && list.length === 1);
+  if(!sure && inline){
+    inlinePick(list, thumb, list.length > 1 ? `Nummer ${r.number} passt zu ${list.length} Sets` : `Kein Set-Kürzel sicher gelesen (Nummer ${r.number}) – bitte bestätigen`);
+    return true;
+  }
   if(!sure){
     paused = true;
     pick = await chooseFrom(list, thumb, list.length > 1
@@ -546,7 +582,7 @@ $("barScan").onclick = () => $("photoInput").click();
 document.addEventListener("visibilitychange", () => { if(document.hidden && stream){ stream.getTracks().forEach(t => t.stop()); stream = null; $("camCover").hidden = false; } });
 
 // Auto-Foto: Schärfe (Laplace-Varianz) + Ruhe im Kartenrahmen messen -> automatisch auslösen
-let armed = true, peak = 0, steady = 0, lastShotSharp = 0, lastShotAt = 0;
+let armed = true, peak = 0, steady = 0, lastShotSharp = 0, lastShotAt = 0, shotSig = null;
 async function loop(){
   const v = $("video");
   const SW = 96, SH = 134, sc = document.createElement("canvas"); sc.width = SW; sc.height = SH;
@@ -579,7 +615,9 @@ async function loop(){
       const present = contrast > 18;
       if(!armed){
         // nach einem Foto: erst wieder auslösen, wenn eine andere Karte im Rahmen liegt
-        if(Date.now() - lastShotAt > 1200 && (motion > 18 || !present || sharp < lastShotSharp * 0.45)){ armed = true; steady = 0; }
+        // neue Karte = Bild im Rahmen unterscheidet sich deutlich vom letzten Foto (oder Rahmen leer)
+        let diff = 0; if(shotSig){ for(let i = 0; i < g.length; i++) diff += Math.abs(g[i] - shotSig[i]); diff /= g.length; }
+        if(Date.now() - lastShotAt > 600 && (!present || diff > 12)){ armed = true; steady = 0; }
         $("readOut").textContent = "✓ Foto gemacht – nächste Karte" + queueInfo();
       } else {
         // locker: leichte Handbewegung ist ok, Bild muss nur halbwegs scharf sein
@@ -587,7 +625,7 @@ async function loop(){
         steady = good ? steady + 1 : 0;
         $("frame").classList.toggle("focus", steady > 0);
         $("readOut").textContent = (!present ? "Karte in den Rahmen halten" : motion >= 14 ? "Etwas ruhiger halten …" : sharp <= 14 ? "Wird scharf gestellt …" : steady ? "Scharf ✓ – Foto!" : "Fokussiere …") + queueInfo();
-        if(steady >= 2){ await autoShot(v, X, Y, Wd, Hd, sharp); prev = null; }
+        if(steady >= 2){ shotSig = g; await autoShot(v, X, Y, Wd, Hd, sharp); }
       }
     }catch(e){ console.warn(e); }
     await sleep(60);
@@ -598,7 +636,7 @@ const shotQ = []; let qRunning = false;
 function queueInfo(){ const n = shotQ.length + (qRunning ? 1 : 0); return n ? ` · ${n} in Analyse` : ""; }
 async function runQueue(){
   if(qRunning) return; qRunning = true;
-  try{ while(shotQ.length){ const cv = shotQ.shift(); try{ await analyzePhoto(cv, { keepCam: true }); }catch(e){ console.warn(e); } } }
+  try{ while(shotQ.length){ const cv = shotQ.shift(); try{ await analyzePhoto(cv, { keepCam: true, quick: true }); }catch(e){ console.warn(e); } } }
   finally{ qRunning = false; }
 }
 async function autoShot(v, X, Y, Wd, Hd, sharp){
@@ -696,8 +734,15 @@ async function analyzePhoto(file, opts){
   };
   let hit = null;
   try{
+    // 0) Auto-Foto: Karte liegt im Rahmen -> erst nur den unteren Kartenrand lesen (schnell)
+    if(opts && opts.quick){
+      for(const inv of [false, true]){
+        hit = await tryAreaInv(cv, 0, H * 0.74, W, H * 0.26, `Lese Kürzel + Nummer${inv ? " (helle Schrift)" : ""} …`, inv);
+        if(hit) break;
+      }
+    }
     // 1) ganzes Foto
-    hit = await tryArea(cv, 0, 0, W, H, "Suche Kürzel + Nummer im ganzen Foto …", { maxW: 2000, adaptive: true });
+    if(!hit) hit = await tryArea(cv, 0, 0, W, H, "Suche Kürzel + Nummer im ganzen Foto …", { maxW: 2000, adaptive: true });
     // 2) waagerechte Streifen – wo die Karte unten ihre Nummer hat (wahrscheinlichste Lagen zuerst)
     // erst dunkle Schrift, dann helle Schrift (Vollbild-/Illustration-Rare-Karten: weiße Nummer auf dem Bild)
     const bands = [0.74, 0.82, 0.66, 0.58, 0.5, 0.42, 0.34, 0.88];
@@ -708,8 +753,8 @@ async function analyzePhoto(file, opts){
       }
       if(hit) break;
     }
-    // 3) Querformat / gedrehte Karte: 90° drehen und noch einmal
-    if(!hit){
+    // 3) Querformat / gedrehte Karte: 90° drehen und noch einmal (nicht beim Auto-Foto – da liegt die Karte gerade im Rahmen)
+    if(!hit && !(opts && opts.quick)){
       for(const dir of [1, -1]){
         const rc = document.createElement("canvas"); rc.width = H; rc.height = W;
         const g = rc.getContext("2d"); g.translate(dir > 0 ? H : 0, dir > 0 ? 0 : W); g.rotate(dir * Math.PI / 2); g.drawImage(cv, 0, 0);
@@ -720,7 +765,7 @@ async function analyzePhoto(file, opts){
     if(!hit && weak) hit = weak;   // nur Nummer gelesen -> Auswahl/Bestätigung statt automatisch
     if(hit){
       box.remove(); paused = wasPaused;
-      if(await handleRead(hit, thumb)) setStatus(hit.strong || hit.kind === "op" ? "✓ Karte aus dem Foto übernommen." : "✓ Karte nach deiner Bestätigung übernommen.");
+      if(await handleRead(hit, thumb, keepCam)) setStatus(hit.strong || hit.kind === "op" ? "✓ Karte aus dem Foto übernommen." : "✓ Karte nach deiner Bestätigung übernommen.");
       return;
     }
     // 4) Kein Kürzel/keine Nummer: Kartenname lesen und in der Datenbank suchen
@@ -756,17 +801,19 @@ async function analyzePhoto(file, opts){
     }
     box.remove(); paused = wasPaused;
     if(!list.length){
-      setStatus("Auf dem Foto wurde keine Karte erkannt. Tipp: Karte gerade, hell und ohne Spiegelung fotografieren – Nummer unten muss lesbar sein. Oder manuell eingeben (z. B. „PAR 040“).");
-      toast("Karte nicht erkannt"); return;
+      failCard(cv, thumb, "Kürzel, Nummer und Name nicht lesbar – Spiegelung/Licht? Nochmal versuchen oder eingeben.");
+      setStatus("Eine Karte wurde nicht erkannt – sie steht mit „Nochmal analysieren“ in der Liste.");
+      return;
     }
     list.sort((a, b) => b.score - a.score);
+    if(keepCam){ inlinePick(list, thumb, `Name „${list[0].label}“ erkannt – welche Ausgabe?`); return; }
     paused = true;
     const pick = await chooseFrom(list, thumb, `Kartenname erkannt: „${list[0].label}“${nums.length ? "" : " – die Nummer war nicht lesbar"}. Welche Ausgabe ist es?`);
     paused = wasPaused;
     if(pick){ addCard(pick.c, thumb); setStatus("✓ Karte über den Namen gefunden."); }
   }catch(e){
     console.error(e); box.remove(); paused = wasPaused;
-    setStatus("Fehler bei der Analyse – bitte noch einmal versuchen.");
+    failCard(cv, thumb, "Fehler bei der Analyse");
   }
 }
 $("photoInput").onchange = async e => {
