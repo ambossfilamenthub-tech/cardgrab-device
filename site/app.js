@@ -238,48 +238,76 @@ function sayDamage(d){
   const n = num(m[1]);
   return m[2] === "+" ? `${n} Schaden oder mehr` : (m[2] === "×" || m[2] === "x") ? `${n} Schaden mal Anzahl` : (m[2] ? `${n} Schaden oder weniger` : `${n} Schaden`);
 }
+// Erzähl-Stil: wie eine kleine Geschichte über die Karte
+const W1 = ["keine", "eine", "zwei", "drei", "vier", "fünf", "sechs"];
+const TYPE_COMP = { Grass: "Pflanzen", Fire: "Feuer", Water: "Wasser", Lightning: "Elektro", Psychic: "Psycho", Fighting: "Kampf", Darkness: "Finsternis", Metal: "Metall", Fairy: "Feen", Dragon: "Drachen" };
+const pickOne = a => a[Math.floor(Math.random() * a.length)];
+function costWords(cost){
+  if(!cost || !cost.length) return "ganz ohne Energie";
+  const g = []; for(const t of cost){ const x = g.find(y => y[0] === t); if(x) x[1]++; else g.push([t, 1]); }
+  const total = cost.length;
+  return g.map(([t, n], i) => {
+    const last = i === g.length - 1, nw = W1[n] || String(n);
+    if(t === "Colorless") return last ? `${nw} farblose ${total > 1 ? "Energien" : "Energie"}` : `${nw} farblose`;
+    const tn = TYPE_COMP[t] || TYPE_DE[t] || t;
+    return last ? `${nw} ${tn}-${n > 1 || total > 1 ? "Energien" : "Energie"}` : `${nw} ${tn}-`;
+  }).join(g.length > 2 ? ", " : " und ").replace(/, ([^,]*)$/, " und $1");
+}
+function damageStory(d, name){
+  const s = String(d ?? "").trim(); if(!s) return "";
+  const m = s.match(/^(\d+)\s*([+×x−-])?$/); if(!m) return `richtet ${name} ${s} Schaden an`;
+  const n = num(m[1]);
+  if(m[2] === "+") return `richtet es mindestens ${n} Schaden an – und manchmal noch mehr`;
+  if(m[2] === "×" || m[2] === "x") return `richtet es ${n} Schaden an, und das gleich mehrfach`;
+  if(m[2]) return `richtet es bis zu ${n} Schaden an`;
+  return `richtet es ${n} Schaden an`;
+}
+function priceStory(c){
+  const v = valueOf(c); if(!(v > 0)) return "";
+  const p = v < 1 ? `${Math.round(v * 100)} Cent` : v.toLocaleString("de-DE", { maximumFractionDigits: v < 10 ? 2 : 0 }) + " Euro";
+  return pickOne([`Und das Beste: Zu haben ist ${c.name} schon ab ${p}.`, `Auf Cardmarket bekommst du ${c.name} ab ${p}.`, `Wert der Karte: ab ${p}.`]);
+}
+// Nur vorlesen, was auf der Karte steht – in der Reihenfolge der Karte
+const dmgPlain = d => String(d ?? "").trim().replace(/\+$/, " plus").replace(/[×x]$/, " mal").replace(/[−-]$/, " minus");
 async function speechParts(c){
   const parts = [], de = t => t && parts.push({ t, l: "de-DE" }), en = t => t && parts.push({ t, l: "en-US" });
   if(c.op){
     const o = c.op;
-    const col = (o.color || "").replace(/Red/g, "rot").replace(/Green/g, "grün").replace(/Blue/g, "blau").replace(/Purple/g, "lila").replace(/Black/g, "schwarz").replace(/Yellow/g, "gelb").replace("/", " und ");
-    const kind = o.cat === "Leader" ? "Leader" : o.cat === "Character" ? "Charakter" : o.cat === "Event" ? "Event-Karte" : o.cat === "Stage" ? "Orts-Karte" : "Karte";
     const nm = c.name.replace(/\.(?=[A-Z]\.)/, " ").replace(/\.(?=\S)/g, ". ");
-    de(`${nm}, ein ${kind}${col ? " in " + col.charAt(0).toUpperCase() + col.slice(1) : ""}.`);
-    if(o.cat === "Leader" && o.cost != null) de(`Er hat ${o.cost} Leben${o.power ? " und eine Stärke von " + num(o.power) : ""}.`);
-    else {
-      const bits = [];
-      if(o.cost != null) bits.push(`kostet ${o.cost} DON`);
-      if(o.power) bits.push(`hat eine Stärke von ${num(o.power)}`);
-      if(bits.length) de(`Die Karte ${bits.join(" und ")}.`);
-      if(o.counter) de(`Als Konter gibt sie plus ${num(o.counter)}.`);
-    }
-    if(o.effect){ de("Der Effekt lautet so."); en(o.effect.replace(/\[|\]/g, "").replace(/DON!!/g, "DON").replace(/➀|①/g, "1").replace(/➁|②/g, "2")); }
-    if(o.trigger){ de("Und der Trigger."); en(o.trigger.replace(/\[|\]/g, "")); }
+    const head = [nm + "."];
+    if(o.cat === "Leader"){ if(o.cost != null) head.push(`Leben ${o.cost}.`); }
+    else if(o.cost != null) head.push(`Kosten ${o.cost}.`);
+    if(o.power) head.push(`Stärke ${num(o.power)}.`);
+    if(o.counter) head.push(`Konter plus ${num(o.counter)}.`);
+    de(head.join(" "));
+    if(o.effect) en(o.effect.replace(/\[|\]/g, "").replace(/DON!!/g, "DON").replace(/➀|①/g, "1").replace(/➁|②/g, "2"));
+    if(o.trigger){ de("Trigger."); en(o.trigger.replace(/\[|\]/g, "")); }
     return parts;
   }
   if(!c.db || !c.db.sid) return null;
   const all = await factsFor(c.db.sid); const e = all && (all[c.db.lid] || all[String(c.db.lid).replace(/^0+/, "")]);
   if(!e) return null;
+  const out = [];
   if(e.c && e.c !== "Pokemon"){
-    const kind = e.c === "Trainer" ? ({ Item: "eine Item-Karte", Supporter: "eine Unterstützer-Karte", Stadium: "eine Stadion-Karte", Tool: "eine Ausrüstungs-Karte" }[e.tt] || "eine Trainerkarte") : "eine Energiekarte";
-    de(`${c.name} ist ${kind}.`);
-    if(e.e) de(sayClean(e.e));
+    if(e.c === "Trainer") out.push(({ Item: "Item.", Supporter: "Unterstützer.", Stadium: "Stadion.", Tool: "Pokémon-Ausrüstung." }[e.tt] || "Trainer."));
+    out.push(`${c.name}.`);
+    if(e.e) out.push(sayClean(e.e));
+    de(out.join(" "));
     return parts;
   }
-  const typ = e.t ? e.t.map(t => TYPE_DE[t] || t).join(" und ") : "";
-  const stage = { Basic: "ein Basis-Pokémon", Stage1: "ein Phase-1-Pokémon", Stage2: "ein Phase-2-Pokémon", VMAX: "ein VMAX-Pokémon", VSTAR: "ein VSTAR-Pokémon", MEGA: "ein Mega-Pokémon", BREAK: "ein TURBO-Pokémon", "LEVEL-UP": "ein Level-Up-Pokémon" }[e.st] || "ein Pokémon";
-  de(`${c.name}${e.hp ? ` hat ${num(e.hp)} Kraftpunkte und ist` : " ist"} ${stage}${typ ? " vom Typ " + typ : ""}.`);
-  (e.ab || []).forEach(([n, eff]) => { de(`Die Fähigkeit heißt ${n}. ${sayClean(eff)}`); });
-  (e.a || []).forEach(([n, d, eff], i) => {
-    const dm = sayDamage(d);
-    const nr = e.a.length > 1 ? "Die " + (ORD[i] || (i + 1) + ".").toLowerCase() + " Attacke" : "Die Attacke";
-    de(`${nr} heißt ${n}${dm ? " und macht " + dm : ""}.${eff ? " " + sayClean(eff) : ""}`);
-  });
-  const tail = [];
-  if(e.w && e.w.length) tail.push(`Schwäche gegen ${e.w.map(t => TYPE_DE[t] || t).join(" und ")}`);
-  if(e.r !== undefined) tail.push(e.r ? `Rückzugskosten ${e.r}` : "keine Rückzugskosten");
-  if(tail.length) de(tail.join(", ") + ".");
+  const stage = { Basic: "Basis", Stage1: "Phase 1", Stage2: "Phase 2", VMAX: "VMAX", VSTAR: "VSTAR", MEGA: "Mega", BREAK: "TURBO" }[e.st];
+  if(stage) out.push(`${stage}${e.ef ? ", entwickelt sich aus " + e.ef : ""}.`);
+  out.push(`${c.name}.`);
+  if(e.hp) out.push(`${num(e.hp)} KP.`);
+  for(const [n, eff] of e.ab || []) out.push(`Fähigkeit: ${n}. ${sayClean(eff)}`);
+  for(const [n, d, eff] of e.a || []){
+    const dm = dmgPlain(d);
+    out.push(`${n}${dm ? ", " + dm : ""}.${eff ? " " + sayClean(eff) : ""}`);
+  }
+  if(e.w && e.w.length) out.push(`Schwäche ${e.w.map((t, i) => (TYPE_DE[t] || t) + " " + String((e.wv || [])[i] || "").replace("×", "mal ").replace("+", "plus ")).join(", ").trim()}.`);
+  if(e.rs && e.rs.length) out.push(`Resistenz ${e.rs.map(([t, v]) => (TYPE_DE[t] || t) + " " + String(v).replace("-", "minus ")).join(", ")}.`);
+  if(e.r !== undefined) out.push(`Rückzug ${e.r}.`);
+  de(out.join(" "));
   return parts;
 }
 const sentences = t => String(t || "").split(/(?<=[.!?])\s+(?=[A-ZÄÖÜ0-9])/).map(x => x.trim()).filter(Boolean);
