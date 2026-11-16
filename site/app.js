@@ -547,18 +547,22 @@ function knownCodes(){
   return KNOWN;
 }
 // typische Lesefehler in Zahlen/Buchstaben korrigieren
-const toDigits = s => s.replace(/[OoQD]/g, "0").replace(/[Il|!]/g, "1").replace(/Z/g, "2").replace(/S/g, "5").replace(/B/g, "8").replace(/G/g, "6");
+const toDigits = s => s.replace(/[OoQD]/g, "0").replace(/[Il|!L]/g, "1").replace(/Z/g, "2").replace(/S/g, "5").replace(/B/g, "8").replace(/G/g, "6");
 const toLetters = s => s.replace(/0/g, "O").replace(/1/g, "I").replace(/5/g, "S").replace(/8/g, "B");
 function parseRead(text){
   const raw = String(text || "").toUpperCase().replace(/[‐-―]/g, "-");
   // One Piece: OP05-119, ST01-012, EB02-010, PRB01-001, P-043
   const t1 = raw.replace(/\s+/g, " ");
-  const opm = t1.match(/\b(OP|0P|ST|5T|EB|E8|PRB|PR8)\s?([0-9OIS]{2})\s?-\s?([0-9OISB]{3})\b/) || t1.match(/\b(P)\s?-\s?([0-9OISB]{3})\b/);
-  if(opm){
-    const pre = { "0P": "OP", "5T": "ST", "E8": "EB", "PR8": "PRB" }[opm[1]] || opm[1];
-    const id = pre === "P" ? `P-${toDigits(opm[2])}` : `${pre}${toDigits(opm[2])}-${toDigits(opm[3])}`;
-    if(OPDB && OPDB.cards[id]) return { kind: "op", id, key: "op:" + id };
+  // Bindestrich wird oft nicht/anders gelesen („OP16 098“, „OP16~098“, „OP16098“), O/0 und P/D/Q verwechselt
+  const OPX = /(?:^|[^A-Z0-9])(OP|0P|QP|DP|ST|5T|EB|E8|PRB|PR8)\s?([0-9OISLZ]{2})\s?[-–~.:_=]?\s?([0-9OISBLZ]{3})(?![0-9])/g;
+  let opm, opHit = null;
+  while(!opHit && (opm = OPX.exec(t1))){
+    const pre = { "0P": "OP", "QP": "OP", "DP": "OP", "5T": "ST", "E8": "EB", "PR8": "PRB" }[opm[1]] || opm[1];
+    const id = `${pre}${toDigits(opm[2])}-${toDigits(opm[3])}`;
+    if(OPDB && OPDB.cards[id]) opHit = id;
   }
+  if(!opHit){ const pm = t1.match(/\b(P)\s?-\s?([0-9OISB]{3})\b/); if(pm && OPDB && OPDB.cards[`P-${toDigits(pm[2])}`]) opHit = `P-${toDigits(pm[2])}`; }
+  if(opHit) return { kind: "op", id: opHit, key: "op:" + opHit };
   // Yu-Gi-Oh!: Set-Kürzel "LOB-DE005" (Sprache steht im Kürzel)
   const yg = ygoParse(raw); if(yg && yg.kind === "ygo") return yg;
   // Japanische Pokémon-Karten: eigenes Kürzel („SV2A 025/165“)
