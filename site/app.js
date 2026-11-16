@@ -886,6 +886,13 @@ const recent = [];
 function frameRect(){
   // Kartenrahmen (63:88) in der Kamera-Ansicht
   const cam = $("cam").getBoundingClientRect();
+  if(document.body.classList.contains("scanmode")){
+    // Vollbild-Scanner: Rahmen oberhalb der Kartenleiste, schmal genug für die Knöpfe rechts
+    const top = 64, bottom = cam.height - 62 - 170, avail = Math.max(120, bottom - top);
+    let H = avail * 0.94, W = H * 63 / 88;
+    if(W > cam.width * 0.6){ W = cam.width * 0.6; H = W * 88 / 63; }
+    return { x: (cam.width - W) / 2, y: top + (avail - H) / 2, w: W, h: H, cw: cam.width, ch: cam.height };
+  }
   const h = cam.height * 0.86, w = h * 63 / 88;
   const W = Math.min(w, cam.width * 0.86), H = W * 88 / 63;
   return { x: (cam.width - W) / 2, y: (cam.height - H) / 2, w: W, h: H, cw: cam.width, ch: cam.height };
@@ -1060,11 +1067,18 @@ async function loop(){
         steady = good ? steady + 1 : 0;
         $("frame").classList.toggle("focus", steady > 0);
         $("readOut").textContent = (LIVE.ok && !LIVE.stable && steady ? "Karte erkannt – ruhig halten …" : !present ? "Karte in den Rahmen halten" : motion >= 14 ? "Etwas ruhiger halten …" : sharp <= 14 ? "Wird scharf gestellt …" : steady ? "Scharf ✓ – Foto!" : "Fokussiere …") + queueInfo();
-        if(steady >= 2){ shotSig = g; await autoShot(v, X, Y, Wd, Hd, sharp); }
+        if(steady >= 2 && !window.UI_SINGLE){ shotSig = g; await autoShot(v, X, Y, Wd, Hd, sharp); }
       }
     }catch(e){ console.warn(e); }
     await sleep(60);
   }
+}
+// Auslöser von Hand (Einzelbild-Modus): aktuelles Kamerabild im Rahmen fotografieren
+function manualShot(){
+  const v = $("video"); if(!v.videoWidth || busy) return;
+  const f = frameRect(), vw = v.videoWidth, vh = v.videoHeight;
+  const s = Math.max(f.cw / vw, f.ch / vh), ox = (vw * s - f.cw) / 2, oy = (vh * s - f.ch) / 2;
+  return autoShot(v, (f.x + ox) / s, (f.y + oy) / s, f.w / s, f.h / s, 99);
 }
 // Warteschlange: Kamera fotografiert weiter, Analyse läuft nacheinander im Hintergrund
 const shotQ = []; let qRunning = false;

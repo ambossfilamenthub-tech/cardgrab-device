@@ -1,0 +1,100 @@
+/* CardGrab Device – neue Oberfläche (schlicht, schwarz/grau, große runde Knöpfe, Vollbild-Scanner) */
+body.ui2{--bg:#111113;--panel:#1c1c1f;--panel2:#232327;--line:#2d2d33;--text:#f5f5f7;--muted:#9b9ba4;--accent:#5ad1e6;--accent2:#b79cff;background:#111113}
+body.ui2::before{display:none}
+body.ui2 .wrap{padding-bottom:calc(96px + env(safe-area-inset-bottom))}
+body.ui2 .top{background:rgba(17,17,19,.92);border-bottom:1px solid #222226}
+body.ui2 .top img{height:30px}
+body.ui2 .brand{font-size:16px}
+body.ui2 .card,body.ui2 .hint,body.ui2 .upd{background:#1c1c1f;border-color:#2a2a30;box-shadow:none}
+body.ui2 .stat{background:#1c1c1f;border-color:#2a2a30}
+body.ui2 .primary{background:#f5f5f7;color:#111;box-shadow:none}
+body.ui2 .secondary{background:#232327;border:1px solid #33333a}
+body.ui2 .chip{background:#232327;border-color:#33333a}
+body.ui2 .chip.on{background:#f5f5f7;color:#111;border-color:#f5f5f7}
+body.ui2 .toast{bottom:calc(150px + env(safe-area-inset-bottom));background:#232327;border-color:#3a3a42;color:#fff}
+
+/* Startseite */
+#home[hidden]{display:none}
+#home{display:flex;flex-direction:column;align-items:center;padding-top:14px}
+.gamepill{background:#1f1f23;border:0;color:#f5f5f7;border-radius:12px;padding:9px 14px;font:700 14px system-ui,sans-serif}
+.hv{display:flex;align-items:center;gap:10px;margin-top:22px;color:#a9a9b2;font:600 15px system-ui,sans-serif}
+.eye{background:none;border:0;color:#fff;font-size:20px;padding:2px 4px;cursor:pointer}
+.eye.off{opacity:.45}
+.hval{font:800 48px/1.1 system-ui,sans-serif;letter-spacing:-1px;margin-top:6px}
+.hchg{font:600 15px system-ui,sans-serif;color:#cfcfd6;margin-top:6px;min-height:20px}
+.hchg.up{color:#3ddc97}.hchg.down{color:#ff6b8a}
+.rounds{display:flex;justify-content:space-around;width:100%;margin:30px 0 8px}
+.rounds button{background:none;border:0;color:#f5f5f7;display:flex;flex-direction:column;align-items:center;gap:10px;font:600 14.5px system-ui,sans-serif;cursor:pointer}
+.rounds i{width:76px;height:76px;border-radius:50%;background:#232327;display:grid;place-items:center;font-style:normal;font-size:30px}
+.rounds button:active i{background:#2e2e34}
+.hcard{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;background:#1f1f23;border-radius:20px;padding:18px 18px 18px 22px;margin-top:18px}
+.hcard[hidden]{display:none}
+.hcard b{font:700 18px system-ui,sans-serif}
+.hcard button{background:#2a2a30;border:0;color:#fff;border-radius:999px;padding:10px 18px;font:600 15px system-ui,sans-serif}
+#homeRecent{width:100%}
+.hsub{display:flex;justify-content:space-between;align-items:center;margin:22px 2px 8px}
+.hsub b{font:700 16px system-ui,sans-serif}
+.hsub button{background:none;border:0;color:#a9a9b2;font:600 14px system-ui,sans-serif}
+.hrow{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none}
+.hrow::-webkit-scrollbar{display:none}
+.htools{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;width:100%;margin-top:20px}
+.htools label,.htools button{background:#1c1c1f;border:0;border-radius:16px;color:#e8e8ee;padding:12px 4px;display:flex;flex-direction:column;align-items:center;gap:6px;font:600 12px system-ui,sans-serif;cursor:pointer}
+.htools i{font-style:normal;font-size:22px}
+
+/* kleine Karte (Startseite + Scanner-Leiste) */
+.mini{flex:0 0 auto;width:108px;background:#151518;border:1px solid #2a2a30;border-radius:12px;padding:5px;color:#f5f5f7;display:flex;flex-direction:column;gap:5px;cursor:pointer}
+.mini .mi{position:relative;display:block;aspect-ratio:63/88;border-radius:8px;overflow:hidden;background:#232327}
+.mini img{width:100%;height:100%;object-fit:cover;display:block}
+.mini em{position:absolute;inset:0;display:grid;place-items:center;font:800 28px system-ui;color:#55555e;font-style:normal}
+.mini .mq{position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,.75);border-radius:6px;padding:2px 6px;font:800 12px system-ui}
+.mini .mp{position:absolute;right:4px;bottom:4px;background:rgba(0,0,0,.75);border-radius:6px;padding:2px 6px;font:800 12px system-ui}
+.mini small{font:700 11.5px system-ui,sans-serif;color:#d8d8de;text-align:left;padding:0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Leiste unten */
+#nav{position:fixed;left:0;right:0;bottom:0;z-index:70;display:flex;background:#141416;border-top:1px solid #222226;padding:6px 4px calc(6px + env(safe-area-inset-bottom))}
+#nav button{flex:1;background:none;border:0;color:#8d8d96;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;font:600 11.5px system-ui,sans-serif;cursor:pointer}
+#nav button i{font-style:normal;font-size:22px;line-height:1}
+#nav button.on{color:#fff}
+
+/* Suche-Seite: nur Eingabe + Ergebnisse (Kamera-Kasten aus) */
+#scan.searchonly #cam,#scan.searchonly #status{display:none}
+
+/* Vollbild-Scanner */
+body.scanmode{overflow:hidden}
+body.scanmode .top,body.scanmode footer,body.scanmode .upd,body.scanmode #home{display:none!important}
+body.scanmode #scan > :not(#cam){display:none!important}
+body.scanmode #cam{position:fixed;left:0;right:0;top:0;bottom:calc(64px + env(safe-area-inset-bottom));width:auto;max-height:none;aspect-ratio:auto;border-radius:0;z-index:50;box-shadow:none;background:#000}
+body.scanmode #camCover{display:none}
+body.scanmode .frame{border:3px solid #fff;border-radius:16px;box-shadow:0 0 0 9999px rgba(0,0,0,.28)}
+body.scanmode .frame .strip{display:none}
+body.scanmode .camstate{top:calc(10px + env(safe-area-inset-top));left:64px;right:64px;justify-content:center}
+body.scanmode .camstate .read{background:rgba(0,0,0,.55);border-radius:999px;padding:6px 12px;font-size:12.5px;max-width:100%}
+body.scanmode #closeCam,body.scanmode #camBtn{display:none}
+body.scanmode #torchBtn{position:fixed;right:12px;top:calc(10px + env(safe-area-inset-top));z-index:72}
+body.scanmode .zoomwrap{display:none}
+body.scanmode .zoomwrap.show{display:flex;top:calc(56px + env(safe-area-inset-top));bottom:auto}
+#scanUi[hidden]{display:none}
+#scanUi{position:fixed;inset:0;z-index:60;pointer-events:none}
+#scanUi > *{pointer-events:auto}
+.sclose{position:fixed;left:12px;top:calc(10px + env(safe-area-inset-top));width:42px;height:42px;border-radius:50%;border:0;background:rgba(0,0,0,.55);color:#fff;font:700 18px system-ui}
+.sside{position:fixed;right:10px;bottom:calc(64px + 62px + 170px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:16px;align-items:center}
+.sside button{background:none;border:0;color:#fff;display:flex;flex-direction:column;align-items:center;gap:4px;font:600 12.5px system-ui,sans-serif;text-shadow:0 1px 4px rgba(0,0,0,.9);cursor:pointer;max-width:84px}
+.sside i{position:relative;font-style:normal;font-size:26px;width:50px;height:50px;border-radius:14px;display:grid;place-items:center;background:rgba(0,0,0,.35)}
+.sside button.on i{background:rgba(255,255,255,.22)}
+.sside i b{position:absolute;top:-6px;right:-8px;background:#ff3b4a;color:#fff;border-radius:999px;min-width:22px;height:22px;padding:0 6px;display:grid;place-items:center;font:800 12px system-ui;text-shadow:none}
+.sside i b[hidden]{display:none}
+.shutter{position:fixed;left:14px;bottom:calc(64px + 62px + 180px + env(safe-area-inset-bottom));width:70px;height:70px;border-radius:50%;border:5px solid #fff;background:rgba(255,255,255,.25);box-shadow:0 2px 12px rgba(0,0,0,.5)}
+.shutter[hidden]{display:none}
+.shutter:active{background:#fff}
+.sstrip{position:fixed;left:0;right:0;bottom:calc(64px + 62px + env(safe-area-inset-bottom));display:flex;gap:10px;overflow-x:auto;padding:8px 12px;scrollbar-width:none;background:linear-gradient(to top,rgba(0,0,0,.65),rgba(0,0,0,0))}
+.sstrip::-webkit-scrollbar{display:none}
+.sempty{color:#fff;font:600 13px system-ui,sans-serif;text-shadow:0 1px 4px #000;padding:20px 6px}
+.sset{position:fixed;left:0;right:0;bottom:calc(64px + env(safe-area-inset-bottom));height:62px;display:flex;align-items:center;gap:12px;padding:0 18px;border:0;border-radius:22px 22px 0 0;background:#1d2340;color:#fff;text-align:left}
+.sset i{font-style:normal;font-size:26px}
+.sset span{flex:1;display:flex;flex-direction:column}
+.sset b{font:700 16px system-ui,sans-serif}
+.sset small{color:#c3c6d8;font:500 13px system-ui,sans-serif}
+.sset em{font-style:normal;font-size:20px;opacity:.85}
+body.scanmode .toast{top:calc(60px + env(safe-area-inset-top));bottom:auto}
+body.ui2 .sheet{z-index:90}
+body.ui2 .tabs,body.ui2 .bar{display:none!important}
