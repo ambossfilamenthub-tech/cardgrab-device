@@ -1,5 +1,5 @@
 // CardGrab Device – Preis-Sounds beim Scannen
-// unter 0,10 €  -> "Bonk"-Ton + Stimme "Schmutz!"
+// unter 0,10 €  -> nur der "Bonk – wah wah"-Ton (ohne Stimme)
 // ab 10,00 €    -> Kassen-"Ka-Ching" + Stimme "Money, money, money!"
 // Die Töne werden im Handy erzeugt (Web Audio) – keine fremden Sounddateien, keine Lizenzfragen.
 "use strict";
@@ -53,7 +53,7 @@ function shout(text, lang, rate, pitch){
 function priceSound(value){
   if(!soundsOn() || !(value > 0)) return;
   try{
-    if(value < SND.low){ playDirt(); setTimeout(() => shout("Schmutz!", "de-DE", 0.9, 0.6), 650); }
+    if(value < SND.low){ playDirt(); }
     else if(value >= SND.high){ playCash(); setTimeout(() => shout("Money, money, money!", "en-US", 1.05, 1.15), 700); }
   }catch(e){ console.warn(e); }
 }
