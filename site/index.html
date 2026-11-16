@@ -72,7 +72,13 @@
   .wishrow .wt input{width:80px;background:rgba(10,9,22,.6);border:1px solid var(--line);color:var(--text);border-radius:9px;padding:6px 8px;font:600 14px system-ui,sans-serif}
   .wishrow .wa{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
 
-  .fold.grade{color:#ffd166}
+  .fold.grade{color:#ffd166;text-decoration:none}
+  .centbox{display:flex;gap:12px;align-items:flex-start;margin:8px 0}
+  .centbox img{width:46%;max-width:220px;border-radius:8px;border:1px solid var(--line)}
+  .centbox>div{flex:1;display:flex;flex-direction:column;gap:8px}
+  .centbox .cv{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:11px;padding:8px 10px}
+  .centbox .cv small{display:block;color:var(--muted);font-size:11.5px} .centbox .cv b{font-size:20px}
+  .centbox .cv.up b{color:#3ddc97} .centbox .cv.down b{color:#ff6b8a}
   .quadov{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
   .cam video,.cam canvas.still{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
   .frame{position:absolute;border-radius:14px;box-shadow:0 0 0 9999px rgba(5,4,13,.55);border:2px solid rgba(255,255,255,.75);transition:border-color .2s}
@@ -308,7 +314,8 @@
         <button class="chip" data-lang="Japanisch">JP</button>
       </div>
       <button class="chip on" id="soundToggle" title="Ton bei billigen (unter 0,10 €) und wertvollen Karten (ab 10 €)">🔔 Sounds an</button>
-      <label class="btn secondary small" for="photoInput" style="margin-left:auto">📸 Foto</label>
+      <button class="btn secondary small" id="centerBtn" style="margin-left:auto" title="Zentrierung einer Karte messen (für Grading)">📐 Zentrierung</button>
+      <label class="btn secondary small" for="photoInput">📸 Foto</label>
     </div>
     <form class="manual" id="manualForm" autocomplete="off">
       <input id="manualInput" placeholder="Manuell: PAR 040 · OP05-119 · LOB-DE005 · Name" enterkeyhint="search">
@@ -324,7 +331,7 @@
       <div class="stat gray"><div class="l">Karten</div><div class="v" id="collCnt">0</div></div>
     </div>
     <div class="insights" id="insights"></div>
-    <div class="segs"><button data-view="cards" class="on">🃏 Karten</button><button data-view="sets">📚 Sets</button><button data-view="wish">⭐ Wunschliste <span id="wishCnt"></span></button></div>
+    <div class="segs"><button data-cview="cards" class="on">🃏 Karten</button><button data-cview="sets">📚 Sets</button><button data-cview="wish">⭐ Wunschliste <span id="wishCnt"></span></button></div>
     <div class="tools cardsonly">
       <input id="search" placeholder="Suchen: Name, Set, Nummer …">
       <select id="sort"><option value="new">Neueste</option><option value="val">Wert ↓</option><option value="gain">Gewinn ↓</option><option value="name">Name A–Z</option><option value="set">Set</option></select>
@@ -379,6 +386,7 @@
 <script src="lib/cardfind.js"></script>
 <script src="lib/manage.js"></script>
 <script src="lib/extras.js"></script>
+<script src="lib/center.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

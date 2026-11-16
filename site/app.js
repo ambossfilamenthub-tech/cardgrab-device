@@ -196,6 +196,7 @@ $("exportBtn").onclick = async () => {
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 };
 // ---- Sicherung einlesen: nur bekannte Felder mit passenden Typen übernehmen (Schutz vor manipulierten Dateien)
+const certLinkOf = c => typeof certLink === "function" ? certLink(c) : "";
 const safeThumb = t => /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(String(t || "")) ? t : "";
 const IMG_OK = /^https:\/\/(assets\.tcgdex\.net|images\.ygoprodeck\.com|limitlesstcg\.nyc3\.cdn\.digitaloceanspaces\.com)\/[\w\-./%]+$/;
 function sanitizeCard(x){
@@ -212,7 +213,7 @@ function sanitizeCard(x){
   };
   const id = str(x.id, 40); if(!id || !/^[\w-]+$/.test(id)) return null;
   const c = { id };
-  for(const k of ["game", "name", "name_en", "name_jp", "number", "set", "set_en", "set_code", "language", "rarity", "cond", "cm_name", "cm_version", "cm_expansion", "cm_exp_slug", "op_effect_de", "op_trigger_de", "folder", "grade"]) if(str(x[k], 2000) !== undefined) c[k] = str(x[k], 2000);
+  for(const k of ["game", "name", "name_en", "name_jp", "number", "set", "set_en", "set_code", "language", "rarity", "cond", "cm_name", "cm_version", "cm_expansion", "cm_exp_slug", "op_effect_de", "op_trigger_de", "folder", "grade", "center", "cert"]) if(str(x[k], 2000) !== undefined) c[k] = str(x[k], 2000);
   for(const [k, lo, hi] of [["t", 0, 1e14], ["vi", 0, 50], ["qty", 1, 9999], ["buy", 0, 1e6], ["real", 0, 1e6], ["realAt", 0, 1e14]]) if(numv(x[k], lo, hi) !== undefined) c[k] = numv(x[k], lo, hi);
   if(x.rh === true) c.rh = true;
   if(x.vAuto) c.vAuto = 1;
@@ -276,7 +277,7 @@ function cardHTML(c, mode){
       ${c.real > 0 ? `<small>✓ gilt als Wert · eingetragen ${new Date(c.realAt || Date.now()).toLocaleDateString("de-DE")}</small>` : ""}</div>
     <div class="speak"><button class="btn secondary small" data-say="${esc(c.id)}">${speakingId === c.id ? "⏹️ Stopp" : "🔊 Vorlesen"}</button><button class="btn secondary small" data-view="${esc(c.id)}">📄 Kartentext</button></div>
     <div class="facts" data-facts="${esc(c.id)}" hidden></div>
-    <div class="editrow"><button data-edit="${esc(c.id)}">✏️ Bearbeiten</button>${c.grade ? `<span class="fold grade">🏅 ${esc(c.grade)}</span>` : ""}${c.folder ? `<span class="fold">📁 ${esc(c.folder)}</span>` : ""}</div>
+    <div class="editrow"><button data-edit="${esc(c.id)}">✏️ Bearbeiten</button>${c.grade ? (certLinkOf(c) ? `<a class="fold grade" href="${esc(certLinkOf(c))}" target="_blank" rel="noopener">🏅 ${esc(c.grade)}</a>` : `<span class="fold grade">🏅 ${esc(c.grade)}</span>`) : ""}${c.center ? `<span class="fold" title="Zentrierung links/rechts · oben/unten">📐 ${esc(c.center)}</span>` : ""}${c.folder ? `<span class="fold">📁 ${esc(c.folder)}</span>` : ""}</div>
     ${c.ygo ? ygoLinks(c) : links(c)}
   </div>`;
 }
@@ -686,6 +687,7 @@ function addCard(c, thumb){
   attachPrice(c);
   coll.unshift(c); saveCard(c); refreshTotals();
   if(typeof backupCheck === "function") backupCheck();
+  if(typeof afterAdd === "function") afterAdd(c);
   document.querySelectorAll("#results .card.latest").forEach(el => { el.classList.remove("latest"); el.classList.add("old"); });
   const t = document.createElement("div"); t.innerHTML = cardHTML(c, "latest");
   $("results").prepend(t.firstElementChild);
@@ -1118,6 +1120,7 @@ async function analyzePhoto(file, opts){
   const k = Math.min(1, 3000 / Math.max(bmp.width, bmp.height));
   const cv = document.createElement("canvas"); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
   cv.getContext("2d").drawImage(bmp, 0, 0, cv.width, cv.height);
+  if(typeof photoTaken === "function" && !(opts && opts.quick)) photoTaken(cv);   // für Zentrierung/Grading-Etikett im Hintergrund
   const W = cv.width, H = cv.height;
   // Vorschaubild: Bildmitte im Kartenformat
   // Karte im Foto suchen und gerade ausschneiden (nicht beim Auto-Foto: da liegt sie schon im Rahmen)
