@@ -43,6 +43,10 @@ jobs:
           git clone --depth 1 https://github.com/tcgdex/cards-database.git /tmp/tcgdex
           node scripts/build-facts.mjs /tmp/tcgdex/data site/facts
 
+      - name: Japanische Pokémon-Karten (TCGdex) bauen
+        continue-on-error: true
+        run: node scripts/build-jp.mjs /tmp/tcgdex site
+
       - name: Yu-Gi-Oh!-Datenbank (YGOPRODeck) bauen
         continue-on-error: true
         run: node scripts/build-ygo.mjs
