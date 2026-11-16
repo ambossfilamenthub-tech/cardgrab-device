@@ -47,6 +47,8 @@ async function pokemon(){
   const cdb = JSON.parse(fs.readFileSync(path.join(SITE, "carddb.json"), "utf8"));
   const wanted = new Set();
   for(const cards of Object.values(cdb.c)) for(const e of cards) if(e[1]) wanted.add(Number(e[1]));
+  // japanische Karten (jpdb.json) haben eigene Cardmarket-Produkte
+  try{ const jp = JSON.parse(fs.readFileSync(path.join(SITE, "jpdb.json"), "utf8")); for(const cards of Object.values(jp.c)) for(const e of cards) if(e[4]) wanted.add(Number(e[4])); }catch{ console.log("  (keine jpdb.json – japanische Preise fehlen heute)"); }
   const p = {};
   let hit = 0;
   for(const row of rows){

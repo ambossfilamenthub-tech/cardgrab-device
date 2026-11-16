@@ -4,7 +4,7 @@ set -u
 LIVE="https://ambossfilamenthub-tech.github.io/cardgrab-device"
 cd site
 ok_json(){ [ -s "$1" ] && node -e "JSON.parse(require('fs').readFileSync('$1','utf8'))" 2>/dev/null; }
-for f in ygodb.json op-de.json; do
+for f in ygodb.json op-de.json jpdb.json; do
   if ! ok_json "$f"; then echo "↺ $f fehlt – nehme Live-Version"; curl -fsSL "$LIVE/$f" -o "$f" || echo "⚠ $f auch live nicht verfügbar"; fi
 done
 need_dir(){ # Ordner, Mindestanzahl
