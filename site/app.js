@@ -549,6 +549,24 @@ function knownCodes(){
 // typische Lesefehler in Zahlen/Buchstaben korrigieren
 const toDigits = s => s.replace(/[OoQD]/g, "0").replace(/[Il|!L]/g, "1").replace(/Z/g, "2").replace(/S/g, "5").replace(/B/g, "8").replace(/G/g, "6");
 const toLetters = s => s.replace(/0/g, "O").replace(/1/g, "I").replace(/5/g, "S").replace(/8/g, "B");
+// Ziffern werden beim Lesen leicht verwechselt (6↔8, 0↔9, 3↔8 …). Steht der Kartenname im gelesenen Text,
+// wird die Nummer genommen, deren Name dazu passt (z. B. „OP18-008“ gelesen, „Yamato“ im Bild -> OP16-098).
+const DIGIT_CONF = { "0": "98", "1": "7", "2": "7", "3": "85", "4": "9", "5": "63", "6": "850", "7": "12", "8": "6309", "9": "804" };
+const lettersOnly = t => String(t || "").toUpperCase().replace(/[^A-Z]/g, "");
+function opNameIn(id, raw){ const c = OPDB && OPDB.cards[id], n = c && lettersOnly(c[0]); return !!n && n.length >= 3 && lettersOnly(raw).includes(n); }
+function opCheckName(id, raw){
+  if(!OPDB) return id;
+  const nameOk = x => opNameIn(x, raw);
+  if(nameOk(id)) return id;
+  const m = id.match(/^([A-Z]+)(\d{2})-(\d{3})$/); if(!m) return id;
+  const digits = (m[2] + m[3]).split(""), seen = new Set([id]), hits = [];
+  const tryId = d => { const x = `${m[1]}${d.slice(0, 2).join("")}-${d.slice(2).join("")}`; if(!seen.has(x)){ seen.add(x); if(OPDB.cards[x] && nameOk(x)) hits.push(x); } };
+  for(let i = 0; i < 5; i++) for(const a of DIGIT_CONF[digits[i]] || ""){
+    const d1 = [...digits]; d1[i] = a; tryId(d1);
+    for(let j = i + 1; j < 5; j++) for(const b of DIGIT_CONF[digits[j]] || ""){ const d2 = [...d1]; d2[j] = b; tryId(d2); }
+  }
+  return hits.length === 1 ? hits[0] : id;
+}
 function parseRead(text){
   const raw = String(text || "").toUpperCase().replace(/[‐-―]/g, "-");
   // One Piece: OP05-119, ST01-012, EB02-010, PRB01-001, P-043
@@ -562,7 +580,7 @@ function parseRead(text){
     if(OPDB && OPDB.cards[id]) opHit = id;
   }
   if(!opHit){ const pm = t1.match(/\b(P)\s?-\s?([0-9OISB]{3})\b/); if(pm && OPDB && OPDB.cards[`P-${toDigits(pm[2])}`]) opHit = `P-${toDigits(pm[2])}`; }
-  if(opHit) return { kind: "op", id: opHit, key: "op:" + opHit };
+  if(opHit){ opHit = opCheckName(opHit, raw); return { kind: "op", id: opHit, key: "op:" + opHit }; }
   // Yu-Gi-Oh!: Set-Kürzel "LOB-DE005" (Sprache steht im Kürzel)
   const yg = ygoParse(raw); if(yg && yg.kind === "ygo") return yg;
   // Japanische Pokémon-Karten: eigenes Kürzel („SV2A 025/165“)
@@ -1217,6 +1235,13 @@ async function analyzePhoto(file, opts){
       hit = await race("Gedrehte Karte prüfen …", [() => readArea(r1, 0, 0, H, W, false, 1600), () => readArea(r2, 0, 0, H, W, false, 1600)]);
     }
     if(!hit && weak) hit = weak;   // nur Nummer gelesen -> Auswahl/Bestätigung statt automatisch
+    // One Piece: Nummer mit dem Kartennamen gegenprüfen (verlesene Ziffern, z. B. OP16-098 -> OP18-008)
+    if(hit && hit.kind === "op" && OPDB && !opNameIn(hit.id, texts.join(" "))){
+      let all = texts.join(" ");
+      if(st){ const C = st.canvas; try{ all += " " + await ocr(prepStrip(C, 0, C.height * 0.8, C.width, C.height * 0.14, false, 1600, true), FREE_WL); }catch{} }
+      const id2 = opCheckName(hit.id, all);
+      if(id2 !== hit.id) hit = { ...hit, id: id2, key: "op:" + id2 };
+    }
     if(hit){
       box.remove(); paused = wasPaused;
       if(await handleRead(hit, thumb, keepCam)) setStatus(hit.strong || hit.kind === "op" ? "✓ Karte aus dem Foto übernommen." : "✓ Karte nach deiner Bestätigung übernommen.");
