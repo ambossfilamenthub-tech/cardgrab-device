@@ -10,7 +10,7 @@ const signEur = n => (n > 0 ? "+" : n < 0 ? "−" : "±") + eur(Math.abs(n) || 0
 
 // gleiche Karte erkennen (für "3×" statt dreimal in der Liste)
 function identity(c){
-  const k = c.op ? "op:" + c.op.id : c.ygo ? `ygo:${c.ygo.key}:${c.ygo.pc}` : c.db ? `pk:${c.db.sid}-${c.db.lid}` : `x:${c.name}:${c.number}`;
+  const k = c.op ? "op:" + c.op.id : c.ygo ? `ygo:${c.ygo.key}:${c.ygo.pc}` : c.jp ? `jp:${c.jp.sid}-${c.jp.lid}` : c.db ? `pk:${c.db.sid}-${c.db.lid}` : `x:${c.name}:${c.number}`;
   return `${k}|${langShort(c)}`;
 }
 

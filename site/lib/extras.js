@@ -63,6 +63,7 @@ document.addEventListener("click", e => {
 async function setGroups(){
   await Promise.all([cardDbReady, opDbReady]);
   if(coll.some(c => c.ygo)) await ygoDbReady;
+  if(coll.some(c => c.jp)) await jpLoad();
   const G = new Map();
   const add = (key, mk, own) => { if(!G.has(key)){ const g = mk(); if(!g) return; g.own = new Set(); g.cards = 0; G.set(key, g); } const g = G.get(key); g.own.add(own); g.cards += qtyOf(own.c || {}) || 1; };
   for(const c of coll){
@@ -79,6 +80,12 @@ async function setGroups(){
         const st = [...OPDB.sets.values()].find(s => s.lab === pre);
         return keys.length ? { game: "onepiece", label: `${pre} · ${st ? st.title : opSetTitle(pre)}`, all: keys, total: keys.length } : null;
       }, c.op.id);
+    } else if(c.jp && JP){
+      const sid = c.jp.sid;
+      add("jp:" + sid, () => {
+        const st = JP.sets.get(sid), m = JP.cards.get(sid); if(!st || !m) return null;
+        return { game: "pokemon", jp: true, sid, label: `🇯🇵 ${sid} · ${st.ja}`, all: [...m.keys()], total: st.total || m.size };
+      }, c.jp.lid);
     } else if(c.db && c.db.sid && CDB){
       const sid = c.db.sid;
       add("pk:" + sid, () => {
@@ -109,6 +116,7 @@ async function renderSets(){
 }
 let SETS_CACHE = null;
 function missingCard(g, key, lang){
+  if(g.jp) return attachPrice(jpMake(g.sid, key));
   if(g.game === "pokemon"){
     const st = g.st, e = CDB.cards.get(g.sid).get(key);
     const x = applyDb({ set_code: st.code || "", set: st.en, set_en: st.en, name: e[2], name_en: e[2], number: `${e[0]}/${st.total || ""}`, language: lang });
@@ -128,7 +136,7 @@ document.addEventListener("click", async e => {
   MISS = list;
   const sh = $("sheet");
   $("sheetIn").innerHTML = `<h4>${esc(g.label)}</h4><p>${miss.length ? `Dir fehlen <b>${miss.length}</b> Karten${sum > 0 ? ` · zusammen ab ca. <b>${eur(sum)}</b>` : ""}.` : "🎉 Set komplett!"}</p>
-    <div class="pickl">${list.map((c, i) => `<div class="missrow"><span><b>${esc(c.name)}</b><br><small>${esc(c.op ? c.op.id : c.ygo ? c.number : (c.db ? "Nr. " + c.db.lid : c.number))}${c.rarity ? " · " + esc(c.rarity) : ""}</small></span>
+    <div class="pickl">${list.map((c, i) => `<div class="missrow"><span><b>${esc(c.name)}</b><br><small>${esc(c.op ? c.op.id : c.ygo ? c.number : c.jp ? (c.name_jp + " · Nr. " + c.jp.lid) : (c.db ? "Nr. " + c.db.lid : c.number))}${c.rarity ? " · " + esc(c.rarity) : ""}</small></span>
       <span class="mp">${valueOf(c) > 0 ? eur(valueOf(c)) : "–"}</span>
       <a class="mbtn" href="${esc(cmHref(c))}" target="_blank" rel="noopener" title="Bei Cardmarket kaufen">🛒</a><button class="mbtn" data-mwish="${i}" title="Auf Wunschliste">⭐</button></div>`).join("")}</div>
     <button class="opt" data-close style="justify-content:center;color:var(--muted)">Schließen</button>`;

@@ -118,6 +118,7 @@ function toastAction(text, label, fn){
 
 // ---------- Karte bearbeiten ----------
 function setLanguage(c, lang){
+  if(c.jp){ toast("Japanische Karte – Sprache bleibt Japanisch"); return; }
   c.language = lang;
   if(c.game === "pokemon" && c.db){ c.name = lang === "Deutsch" && c.db.de ? c.db.de : (c.db.en || c.name); c.set = lang === "Deutsch" ? (c.db.setDe || c.set) : (c.db.setEn || c.set); }
   if(c.ygo){ const e = ygoCard(c.ygo.pc); if(e) c.name = lang === "Deutsch" && e[1] ? e[1] : e[0]; const lc = YGO_LCODE[lang] || "EN"; c.number = c.number.replace(/-[A-Z]{1,2}(?=[A-Z]?\d)/, "-" + lc); }
@@ -127,6 +128,7 @@ function setLanguage(c, lang){
 async function alternativesFor(c){
   await Promise.all([cardDbReady, opDbReady]);
   if(c.ygo){ await ygoDbReady; return ygoPrintsLabeled(c.ygo.pc, c.language); }
+  if(c.jp){ await jpLoad(); return jpAlternatives(c); }
   const list = [];
   const names = [c.name_en, c.name].filter(Boolean);
   for(const n of names) for(const [, hits] of namesInText(n).slice(0, 1)) for(const h of hits){

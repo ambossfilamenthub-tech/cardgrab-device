@@ -54,6 +54,7 @@ function productUrl(c, verOverride){
 // Cardmarket-Filter: Sprache der Karte, mind. Near Mint, Verkäufer aus Deutschland
 const CMQ = c => `language=${langId(c)}&minCondition=${({ MT: 1, NM: 2, EX: 3, GD: 4, LP: 5, PL: 6, PO: 7 })[c.cond] || 2}&sellerCountry=7`;
 function links(c){
+  if(c.jp && typeof jpLinks === "function") return jpLinks(c);
   if(isOP(c)) return opLinks(c);
   if(!c.db && CDB) applyDb(c);
   const code = cmCode(c);
