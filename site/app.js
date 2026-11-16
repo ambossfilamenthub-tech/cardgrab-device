@@ -31,6 +31,7 @@ YGO_HOOKS.prices.push(d => { if(!d) return; coll.forEach(c => { if(c.ygo){ attac
 // Preis an Karte hängen: {low, trend, avg7, avg30, holo:{…}, src}
 function attachPrice(c){
   if(c.ygo) return ygoAttachPrice(c);
+  if(c.jp) return jpPrice(c);
   if(c.op){
     const vs = (OPP && OPP.c && OPP.c[c.op.id]) || [];
     c.versions = vs.map(v => ({ id: v[0], low: v[1], trend: v[2], avg7: v[3], avg30: v[4], guess: !!v[5], pack: v[6] || "" }));
@@ -51,6 +52,7 @@ const valueOf = c => { if(c.real > 0) return c.real; const p = c.price; if(!p) r
 async function findImg(c){
   // eigene, gespeicherte Bilder zuerst (img/…), sonst direkt von der Quelle
   // Bilder werden nur verlinkt (nicht selbst gespeichert) – Rechte liegen bei den Herausgebern
+  if(c.jp) return jpImg(c);
   if(c.ygo) return `https://images.ygoprodeck.com/images/cards_small/${c.ygo.pc}.jpg`;
   if(c.op){ const n = opImgName(c); const set = c.op.id.startsWith("P-") ? "P" : c.op.id.split("-")[0]; return `https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/one-piece/${set}/${n}.webp`; }
   if(c.db && c.db.sid){
@@ -217,7 +219,7 @@ function sanitizeCard(x){
   for(const [k, lo, hi] of [["t", 0, 1e14], ["vi", 0, 50], ["qty", 1, 9999], ["buy", 0, 1e6], ["real", 0, 1e6], ["realAt", 0, 1e14]]) if(numv(x[k], lo, hi) !== undefined) c[k] = numv(x[k], lo, hi);
   if(x.rh === true) c.rh = true;
   if(x.vAuto) c.vAuto = 1;
-  for(const k of ["db", "op", "ygo"]) if(x[k] && typeof x[k] === "object") c[k] = plain(x[k]);
+  for(const k of ["db", "op", "ygo", "jp"]) if(x[k] && typeof x[k] === "object") c[k] = plain(x[k]);
   if(Array.isArray(x.pv)) c.pv = x.pv.slice(-35).filter(p => Array.isArray(p) && /^\d{4}-\d\d-\d\d$/.test(p[0]) && numv(p[1]) !== undefined).map(p => [p[0], p[1]]);
   const th = safeThumb(x.thumb); if(th && th.length < 400000) c.thumb = th;
   if(typeof x.img === "string"){ const ok = x.img.split(" ").filter(u => IMG_OK.test(u)); if(ok.length) c.img = ok.join(" "); }
@@ -559,6 +561,8 @@ function parseRead(text){
   }
   // Yu-Gi-Oh!: Set-Kürzel "LOB-DE005" (Sprache steht im Kürzel)
   const yg = ygoParse(raw); if(yg && yg.kind === "ygo") return yg;
+  // Japanische Pokémon-Karten: eigenes Kürzel („SV2A 025/165“)
+  if(typeof jpParse === "function"){ const j = jpParse(raw); if(j) return j; }
   // Pokémon: Nummer "040/182", "TG05/TG30", "GG35/GG70", "SV049/SV094", "4/102"
   // Kürzel zählt nur, wenn es direkt neben der Nummer steht (so ist es gedruckt: "PAL DE 227/193")
   const T = raw.replace(/\s*\/\s*/g, "/").replace(/\s+/g, " ");
@@ -608,6 +612,7 @@ function parseRead(text){
 // Kandidaten in der Datenbank suchen -> [{c, label, sub}]
 function candidates(r){
   if(r.kind === "ygo" || r.kind === "ygopass") return ygoCandidates(r);
+  if(r.kind === "jp") return jpCandidates(r);
   if(r.kind === "op"){
     const c = opApply({ game: "onepiece", number: r.id, language: LANG === "Japanisch" ? "Japanisch" : "Englisch" });
     return c.op ? [{ c, label: c.name, sub: `${c.op.id} · ${c.set}` }] : [];
@@ -936,7 +941,7 @@ async function startCam(nextCam){
   };
   if(caps.torch){ const b = $("torchBtn"); b.hidden = false; b.onclick = async () => { const on = !b.classList.contains("on"); try{ await track.applyConstraints({ advanced: [{ torch: on }] }); b.classList.toggle("on", on); }catch{} }; }
   setStatus("<b>Auto-Foto:</b> Karte in den Rahmen legen und Handy ruhig halten (ca. 15–20 cm, Zoom-Regler nutzen). Sobald sie scharf ist, macht die App das Foto selbst. Danach einfach die nächste Karte hinlegen.");
-  await Promise.all([ocrReady, cardDbReady, opDbReady, ygoSoon()]);
+  await Promise.all([ocrReady, cardDbReady, opDbReady, ygoSoon(), typeof jpLoad === "function" ? jpLoad() : 0]);
   if(!loop.running){ loop.running = true; loop().finally(() => loop.running = false); }
 }
 $("startBtn").onclick = () => startCam();
@@ -1129,7 +1134,7 @@ async function analyzePhoto(file, opts){
   const thumb = st ? cardThumb(st.canvas, 0, 0, st.canvas.width, st.canvas.height) : cardThumb(cv, (W - tw) / 2, (H - th) / 2, tw, th);
   const box = photoBox(thumb, "Texterkennung startet …");
   const step = t => { const m = box.querySelector("#anaStep"); if(m) m.textContent = t; };
-  await Promise.all([ocrReady, cardDbReady, opDbReady, ygoSoon()]);
+  await Promise.all([ocrReady, cardDbReady, opDbReady, ygoSoon(), typeof jpLoad === "function" ? jpLoad() : 0]);
   if(!worker){ box.remove(); setStatus("Texterkennung nicht verfügbar – bitte manuell eingeben."); return; }
   const wasPaused = paused; if(!keepCam) paused = true;
   const texts = [];
@@ -1326,11 +1331,17 @@ $("manualForm").onsubmit = async e => {
   $("manualInput").blur();
   manualMsg("🔍 Suche …", true);
   try{
-    await Promise.all([cardDbReady, opDbReady, ygoDbReady]);
+    await Promise.all([cardDbReady, opDbReady, ygoDbReady, typeof jpLoad === "function" ? jpLoad() : 0]);
     let r = parseRead(q);
+    if(!r && typeof jpCode === "function"){   // japanisch ohne Gesamtzahl: „SV2a 25“
+      const m = q.toUpperCase().match(/^([A-Z0-9.\-]{2,7})\s+(\d{1,3})$/), st = m && jpCode(m[1]);
+      const lid = st && m[2].padStart(3, "0");
+      if(st && JP.cards.get(st.id) && JP.cards.get(st.id).has(lid)) r = { kind: "jp", sid: st.id, lid, strong: true, key: "m" };
+    }
     if(!r){ const m = q.toUpperCase().match(/^([A-Z0-9]{2,5})\s*([A-Z]{0,2}\d{1,3})$/); if(m && knownCodes().has(m[1])) r = { kind: "pk", code: m[1], number: m[2], lang: "", strong: true, key: "m" }; }
     const byName = () => {
       const list = [];
+      if(LANG === "Japanisch" && typeof jpAlternatives === "function") list.push(...jpAlternatives({ name_en: q, name_jp: q }).slice(0, 30));
       for(const [, hits] of namesInText(q).slice(0, 2)) for(const h of hits){
         if(list.length > 40) break;
         if(h.kind === "ygo") list.push(...ygoPrintsLabeled(h.pc, LANG));
