@@ -3,7 +3,7 @@
 "use strict";
 const lsGet = (k, d) => { try{ const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; }catch{ return d; } };
 const lsSet = (k, v) => { try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} };
-const TRANSIENT = ["id", "t", "thumb", "qty", "cond", "buy", "folder", "grade", "real", "realAt", "price", "versions", "img", "pv", "learned"];
+const TRANSIENT = ["id", "t", "thumb", "qty", "cond", "buy", "folder", "grade", "cert", "center", "real", "realAt", "price", "versions", "img", "pv", "learned"];
 const stripCard = c => { const o = {}; for(const k of Object.keys(c)) if(!TRANSIENT.includes(k)) o[k] = c[k]; return JSON.parse(JSON.stringify(o)); };
 const cmHref = c => { const m = (c.ygo ? ygoLinks(c) : links(c)).match(/class="cm" href="([^"]+)"/); return m ? m[1].replace(/&amp;/g, "&") : ""; };
 
@@ -50,10 +50,10 @@ function backupCheck(){
 // ================= Ansicht-Umschalter in der Sammlung =================
 let VIEW = "cards";
 document.addEventListener("click", e => {
-  const b = e.target.closest("[data-view]"); if(!b) return;
-  VIEW = b.dataset.view;
+  const b = e.target.closest("[data-cview]"); if(!b) return;
+  VIEW = b.dataset.cview;
   if(VIEW !== "cards" && typeof SELMODE !== "undefined" && SELMODE){ SELMODE = false; SEL.clear(); updSelBar(); }
-  document.querySelectorAll("[data-view]").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll("[data-cview]").forEach(x => x.classList.toggle("on", x === b));
   document.querySelectorAll(".cardsonly").forEach(x => x.hidden = VIEW !== "cards");
   $("extraView").hidden = VIEW === "cards";
   if(VIEW === "sets") renderSets(); else if(VIEW === "wish") renderWish();
@@ -198,7 +198,7 @@ async function wishAlarm(){
   if(!fresh.length) return;
   fresh.forEach(h => seen[h.w.w] = h.v); lsSet("cgd-wishseen", seen);
   setTimeout(() => toastAction(fresh.length === 1 ? `🔔 „${fresh[0].c.name}“ ist jetzt ${eur(fresh[0].v)} – unter deinem Zielpreis!` : `🔔 ${fresh.length} Karten deiner Wunschliste sind unter dem Zielpreis`, "Ansehen",
-    () => { showTab("coll"); document.querySelector('[data-view="wish"]').click(); }), 1500);
+    () => { showTab("coll"); document.querySelector('[data-cview="wish"]').click(); }), 1500);
 }
 setTimeout(wishAlarm, 3000);
 

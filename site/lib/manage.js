@@ -145,15 +145,18 @@ async function editCard(id){
     { v: "folder", label: "📁 Ordner", sub: c.folder || "kein Ordner" },
     { v: "cond", label: "🏷️ Zustand", sub: c.cond || "NM" },
     { v: "grade", label: "🏅 Grading (PSA, BGS, CGC …)", sub: c.grade || "nicht gegradet" },
+    { v: "center", label: "📐 Zentrierung messen", sub: c.center ? `zuletzt ${c.center}` : "Foto der Karte ohne Hülle" },
     { v: "wish", label: "⭐ Auf die Wunschliste", sub: "z. B. um eine zweite zu kaufen" }
   ]);
   if(!act) return;
+  if(act === "center"){ centerFromPhoto(c); return; }
   if(act === "lang"){ const v = await pickFrom("Sprache der Karte", LANGS.map(l => ({ v: l, label: l, right: l === c.language ? "✓" : "" }))); if(!v) return; setLanguage(c, v); }
   else if(act === "folder"){ const f = await chooseFolder(); if(f === undefined) return; if(f) c.folder = f; else delete c.folder; }
   else if(act === "cond"){ const v = await pickFrom("Zustand", CONDS.map(([k, n]) => ({ v: k, label: `${k} · ${n}`, right: k === (c.cond || "NM") ? "✓" : "" }))); if(!v) return; c.cond = v; }
   else if(act === "grade"){
-    const co = await pickFrom("Grading-Firma", ["Nicht gegradet", "PSA", "BGS (Beckett)", "CGC", "SGC", "TAG", "Andere"].map(x => ({ v: x, label: x, right: c.grade && c.grade.startsWith(x.split(" ")[0]) ? "✓" : "" }))); if(!co) return;
-    if(co === "Nicht gegradet") delete c.grade;
+    const co = await pickFrom("Grading-Firma", ["📷 Etikett fotografieren (automatisch)", "Nicht gegradet", "PSA", "BGS (Beckett)", "CGC", "SGC", "TAG", "Andere"].map(x => ({ v: x, label: x, right: c.grade && c.grade.startsWith(x.split(" ")[0]) ? "✓" : "" }))); if(!co) return;
+    if(co.startsWith("📷")){ gradeFromPhoto(c); return; }
+    if(co === "Nicht gegradet"){ delete c.grade; delete c.cert; }
     else {
       const g = await pickFrom(`${co} – Note`, ["10", "9.5", "9", "8.5", "8", "7.5", "7", "6", "5", "4", "3", "2", "1", "Authentic"].map(x => ({ v: x, label: x }))); if(!g) return;
       c.grade = `${co.split(" ")[0]} ${g}`;
