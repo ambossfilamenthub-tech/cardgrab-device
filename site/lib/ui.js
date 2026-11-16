@@ -62,7 +62,7 @@ function go(page){
   if(page === "scanner"){ openScanner(); return; }
   if(document.body.classList.contains("scanmode")) closeScanner(true);
   UI.page = page;
-  $("home").hidden = page !== "home";
+  $("home").hidden = page !== "home"; document.body.classList.toggle("home-on", page === "home");
   if(page === "coll" || page === "wish"){
     showTab("coll");
     const want = page === "wish" ? "wish" : "cards", b = document.querySelector(`[data-cview="${want}"]`);
@@ -204,6 +204,8 @@ const _refresh = refreshTotals;
 refreshTotals = function(){ const r = _refresh.apply(this, arguments); if(UI.page === "home" && !document.body.classList.contains("scanmode")) renderHome(); return r; };
 document.addEventListener("click", e => { if(e.target.closest("#soundToggle") && document.body.classList.contains("scanmode")) setTimeout(renderScanUi, 30); });
 
+// kaputte Bilder in den kleinen Karten ausblenden (ohne Inline-Handler wegen CSP)
+document.addEventListener("error", e => { const t = e.target; if(t && t.tagName === "IMG" && t.closest(".mini")) t.classList.add("bad"); }, true);
 // Start: Startseite zeigen, sobald die Sammlung geladen ist
 go("home");
 setTimeout(renderHome, 400); setTimeout(renderHome, 1500);
