@@ -306,7 +306,8 @@ function opDirect(c){
   const exp = opTitle(v.pack); if(!exp) return "";
   const same = c.versions.filter(x => x.pack === v.pack).sort((a, b) => a.id - b.id);
   const k = same.length > 1 ? "-V" + (same.indexOf(v) + 1) : "";
-  return `https://www.cardmarket.com/de/OnePiece/Products/Singles/${slug(exp)}/${slug(c.op.name)}-${c.op.id}${k}?${CMQ(c)}`;
+  // Versionsnummer steht wie bei Pokémon vor der Nummer: …/Yamato-V2-OP16-098
+  return `https://www.cardmarket.com/de/OnePiece/Products/Singles/${slug(exp)}/${slug(c.op.name)}${k}-${c.op.id}?${CMQ(c)}`;
 }
 function opLinks(c){
   if(!c.op && OPDB) opApply(c);
@@ -317,8 +318,9 @@ function opLinks(c){
   const ebay = `<a class="alt" href="https://www.ebay.de/sch/i.html?_nkw=${encodeURIComponent([id, c.name_en || c.name, "one piece"].filter(Boolean).join(" "))}&LH_Sold=1&LH_Complete=1" target="_blank" rel="noopener">eBay verkauft ↗</a>`;
   const del = `<button data-del="${esc(c.id)}">Entfernen</button>`;
   return `<div class="links">
-    <a class="cm" href="${direct || search}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (DE · ${lang} · ${esc(c.cond || "NM")}) ↗</a>
-    ${direct ? `<a class="alt" href="${search}" target="_blank" rel="noopener">Falsche Seite? Suche ${esc(id)} ↗</a>` : ""}
+    <a class="cm" href="${search}" target="_blank" rel="noopener">Auf Cardmarket suchen: ${esc(id)} (DE · ${lang} · ${esc(c.cond || "NM")}) ↗</a>
+    ${direct ? `<a class="alt" href="${direct}" target="_blank" rel="noopener">Direktlink (Versuch) ↗</a>` : ""}
+    <a class="alt" href="https://www.cardmarket.com/de/OnePiece/Products/Search?${CMQ(c)}&searchString=${encodeURIComponent(c.name_en || (c.op && c.op.name) || c.name)}" target="_blank" rel="noopener">Suche nach Name ↗</a>
     ${ebay}${del}</div>`;
 }
 function opFacts(c){
