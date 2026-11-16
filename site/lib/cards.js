@@ -315,12 +315,17 @@ function opLinks(c){
   const search = "https://www.cardmarket.com/de/OnePiece/Products/Search?" + CMQ(c) + "&searchString=" + encodeURIComponent(id);
   const direct = opDirect(c);
   const lang = c.op && c.op.jp ? "JP" : "EN";
+  // Name-Suche findet die Karte immer (Nummern stehen bei Cardmarket nicht zuverlässig im Produktnamen)
+  const nm = c.name_en || (c.op && c.op.name) || c.name;
+  const byName = "https://www.cardmarket.com/de/OnePiece/Products/Search?" + CMQ(c) + "&searchString=" + encodeURIComponent(nm);
+  const setT = c.op && c.op.pack ? opTitle(c.op.pack) : (c.set || "");
   const ebay = `<a class="alt" href="https://www.ebay.de/sch/i.html?_nkw=${encodeURIComponent([id, c.name_en || c.name, "one piece"].filter(Boolean).join(" "))}&LH_Sold=1&LH_Complete=1" target="_blank" rel="noopener">eBay verkauft ↗</a>`;
   const del = `<button data-del="${esc(c.id)}">Entfernen</button>`;
   return `<div class="links">
-    <a class="cm" href="${search}" target="_blank" rel="noopener">Auf Cardmarket suchen: ${esc(id)} (DE · ${lang} · ${esc(c.cond || "NM")}) ↗</a>
+    <a class="cm" href="${byName}" target="_blank" rel="noopener">Auf Cardmarket suchen: ${esc(nm)} (DE · ${lang} · ${esc(c.cond || "NM")}) ↗</a>
+    ${setT ? `<div style="flex:1 1 100%;font-size:11.5px;color:var(--muted)">In der Liste die Karte aus „${esc(setT)}“ mit Nr. ${esc(id)} wählen.</div>` : ""}
     ${direct ? `<a class="alt" href="${direct}" target="_blank" rel="noopener">Direktlink (Versuch) ↗</a>` : ""}
-    <a class="alt" href="https://www.cardmarket.com/de/OnePiece/Products/Search?${CMQ(c)}&searchString=${encodeURIComponent(c.name_en || (c.op && c.op.name) || c.name)}" target="_blank" rel="noopener">Suche nach Name ↗</a>
+    <a class="alt" href="${search}" target="_blank" rel="noopener">Suche ${esc(id)} ↗</a>
     ${ebay}${del}</div>`;
 }
 function opFacts(c){
