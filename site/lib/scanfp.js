@@ -12,8 +12,9 @@ function fpLoadAll(){ return Promise.all(myGames().map(fpLoad)); }
 setTimeout(() => (window.requestIdleCallback || setTimeout)(fpLoadAll), 1500);
 document.addEventListener("pointerdown", () => fpLoadAll(), { once: true, capture: true });
 
-// Grenzwerte (Abstand von 128 Bit): darunter sicher, dazu Abstand zum nächstbesten anderen Motiv
-const FP_SURE = 30, FP_GAP = 8, FP_MAYBE = 40;
+// Grenzwerte (Abstand von 128 Bit), geeicht am Selbsttest des täglichen Laufs:
+// richtige Karte meist 14–16 (höchstens ~28), fremde Karten meist 30+ -> nur bei klarem Abstand übernehmen
+const FP_SURE = 28, FP_GAP = 8, FP_MAYBE = 34, FP_ASK = 26;
 function fpPixels(src){
   // Karte auf feste Größe bringen (schneller und gleichmäßiger), aufrecht und 180° gedreht
   const W = 252, H = 352, c = document.createElement("canvas"); c.width = W; c.height = H;
@@ -68,7 +69,8 @@ async function fpIdentify(src){
   // gleiches Motiv (Nachdrucke) = fast gleicher Abstand; „anderes Motiv“ = deutlich weiter weg
   const group = cand.filter(x => x.d <= best.d + 3), other = cand.find(x => x.d > best.d + 3);
   const gap = other ? other.d - best.d : 99;
-  const sure = best.d <= FP_SURE && gap >= FP_GAP;
+  const sure = (best.d <= 24 && gap >= FP_GAP) || (best.d <= FP_SURE && gap >= 12);
+  const ok = best.d <= FP_ASK && gap >= 6;   // gut genug, um eine Auswahl anzubieten
   const lang = LANG, list = [], seen = new Set();
   let ygoPc = 0;
   for(const g of group){
@@ -77,7 +79,7 @@ async function fpIdentify(src){
     const id = identity(r.c); if(seen.has(id)) continue; seen.add(id); list.push(r);
   }
   if(ygoPc && !list.length) for(const x of ygoPrintsLabeled(ygoPc, lang)) list.push(x);
-  return { sure, list, ygoPc, d: best.d, gap, game: best.game };
+  return { sure, ok, list, ygoPc, d: best.d, gap, game: best.game };
 }
 
 // ---------- Auswahl „Meine Spiele“ ----------
