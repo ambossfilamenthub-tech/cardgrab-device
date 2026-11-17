@@ -338,15 +338,16 @@ function cardHTML(c, mode){
 }
 function langShort(c){ const l = String(c.language || "").toLowerCase(); return l.startsWith("deu") ? "DE" : l.startsWith("jap") ? "JP" : l.startsWith("fr") ? "FR" : "EN"; }
 function langLong(c){ return { DE: "Deutsch", JP: "Japanisch", FR: "Französisch", EN: "Englisch" }[langShort(c)]; }
-function setReal(id){
+function setReal(id, inp){
   const c = coll.find(x => x.id === id); if(!c) return;
-  const inp = document.querySelector(`[data-real="${CSS.escape(id)}"]`);
+  // die Karte kann mehrmals auf der Seite stehen (Scanner-Liste + Sammlung) -> das Feld neben dem Knopf nehmen
+  if(!inp) inp = [...document.querySelectorAll(`[data-real="${CSS.escape(id)}"]`)].find(i => i.value.trim()) || null;
   const v = parseFloat(String(inp ? inp.value : "").replace(/[^0-9,.]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", "."));
   if(isFinite(v) && v > 0){ c.real = Math.round(v * 100) / 100; c.realAt = Date.now(); toast(`✓ ${c.name}: ${eur(c.real)} (${langLong(c)}) übernommen`); }
   else { delete c.real; delete c.realAt; toast("Eigener Preis entfernt – es gilt wieder der ab-Preis aus der Liste"); }
   saveCard(c); rerender(c); refreshTotals();
 }
-document.addEventListener("keydown", e => { const i = e.target.closest && e.target.closest("[data-real]"); if(i && e.key === "Enter"){ e.preventDefault(); setReal(i.dataset.real); } });
+document.addEventListener("keydown", e => { const i = e.target.closest && e.target.closest("[data-real]"); if(i && e.key === "Enter"){ e.preventDefault(); setReal(i.dataset.real, i); } });
 document.addEventListener("click", e => {
   const head = e.target.closest(".card .rowc");
   if(head && !e.target.closest("a,button,input")){
@@ -355,7 +356,7 @@ document.addEventListener("click", e => {
     else if(!card.classList.contains("latest") && card.dataset.card) card.classList.add("old");
     return;
   }
-  const ro = e.target.closest("[data-realok]"); if(ro){ setReal(ro.dataset.realok); return; }
+  const ro = e.target.closest("[data-realok]"); if(ro){ const box = ro.closest(".real"); setReal(ro.dataset.realok, box && box.querySelector("[data-real]")); return; }
   const kv = e.target.closest("[data-view]");
   if(kv){ const c = coll.find(x => x.id === kv.dataset.view); const box = document.querySelector(`[data-facts="${CSS.escape(kv.dataset.view)}"]`); if(c && box){ if(!box.hidden && box.innerHTML){ box.hidden = true; } else showCardView(c, false); } return; }
   const sb = e.target.closest("[data-say]"); if(sb){ const c = coll.find(x => x.id === sb.dataset.say); if(c) speakCard(c); return; }
@@ -965,17 +966,24 @@ async function listBackCams(){
   }catch{ backCams = []; }
 }
 function savedCam(){ try{ return localStorage.getItem("cgd-cam") || ""; }catch{ return ""; } }
+// Kamera anfordern – hängt die Freigabe (Abfrage übersehen/blockiert), nach 12 s abbrechen statt schwarzem Bild
+function gum(constraints){
+  return Promise.race([navigator.mediaDevices.getUserMedia(constraints),
+    new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error("Zeitüberschreitung"), { name: "TimeoutError" })), 12000))]);
+}
 async function openStream(deviceId){
   const base = { width: { ideal: 2560 }, height: { ideal: 1440 }, frameRate: { ideal: 30 } };
   const video = deviceId ? { ...base, deviceId: { exact: deviceId } } : { ...base, facingMode: { ideal: "environment" } };
-  return navigator.mediaDevices.getUserMedia({ audio: false, video });
+  return gum({ audio: false, video });
 }
+let CAM_ERR = "";
 async function startCam(nextCam){
+  CAM_ERR = "";
   if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; await sleep(150); }
   try{
     if(!backCams.length){
       // erst einmal Zugriff holen, sonst liefert enumerateDevices keine Namen
-      const tmp = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
+      const tmp = await gum({ video: { facingMode: { ideal: "environment" } } });
       tmp.getTracks().forEach(t => t.stop());
       await listBackCams();
       const sv = savedCam(); camIdx = Math.max(0, backCams.findIndex(d => d.deviceId === sv));
@@ -984,7 +992,8 @@ async function startCam(nextCam){
     stream = await openStream(dev && dev.deviceId);
     if(dev) try{ localStorage.setItem("cgd-cam", dev.deviceId); }catch{}
   }catch(e){
-    try{ stream = await openStream(""); }catch{
+    try{ stream = await openStream(""); }catch(e2){
+      CAM_ERR = (e2 && e2.name) || (e && e.name) || "Error";
       setStatus("Kamera nicht verfügbar oder nicht erlaubt. Erlaube den Kamerazugriff in den Browser-Einstellungen – oder nutze „🖼️ Foto“ bzw. die manuelle Eingabe.");
       return;
     }

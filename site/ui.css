@@ -204,3 +204,9 @@ body.ui2 .links button[data-del]{background:linear-gradient(#271a58,#1f1549) pad
 body.ui2 .links a.alt:active,body.ui2 .links button:active,body.ui2 [data-edit]:active{transform:translateY(2px);box-shadow:none}
 /* Leiste unten undurchsichtig */
 #nav{background:linear-gradient(180deg,#2b1966,#170f3f)}
+
+/* Kamera startet nicht */
+#camHelp{position:fixed;left:16px;right:16px;top:30%;z-index:75;background:linear-gradient(160deg,#2c1b6b,#1b1248);border:2px solid transparent;background-clip:padding-box;border-radius:18px;padding:18px;color:#fff;box-shadow:0 0 0 2px rgba(240,171,252,.7),0 14px 40px rgba(0,0,0,.5)}
+#camHelp b{font:800 18px system-ui,sans-serif}
+#camHelp p{font:500 14.5px/1.4 system-ui,sans-serif;color:#ddd6fe;margin:8px 0 14px}
+#camHelp div{display:flex;gap:10px;flex-wrap:wrap}
