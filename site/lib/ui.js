@@ -134,8 +134,25 @@ async function openScanner(){
   $("scanUi").hidden = false;
   document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.go === "scanner"));
   renderScanUi();
+  camHelp(false);
   await startCam();
   placeFrame();
+  if(!stream) camHelp(true);
+}
+// Kamera startet nicht: im Scanner deutlich sagen, was zu tun ist (statt schwarzem Bild)
+function camHelp(show){
+  let el = $("camHelp");
+  if(!show){ if(el) el.remove(); return; }
+  if(!el){ el = document.createElement("div"); el.id = "camHelp"; $("scanUi").appendChild(el); }
+  const denied = CAM_ERR === "NotAllowedError" || CAM_ERR === "SecurityError", wait = CAM_ERR === "TimeoutError", none = CAM_ERR === "NotFoundError" || CAM_ERR === "OverconstrainedError", busy = CAM_ERR === "NotReadableError";
+  el.innerHTML = `<b>📷 Kamera startet nicht</b>
+    <p>${denied ? "Der Kamerazugriff ist für CardGrab gesperrt. Tippe oben in der Adressleiste auf das Schloss-/Kamera-Symbol (bzw. in der installierten App: Einstellungen → Apps → Browser → Berechtigungen) und erlaube die Kamera."
+      : wait ? "Die Kamera-Freigabe wurde nicht bestätigt. Oft erscheint oben ein kleines Fenster oder ein Kamera-Symbol in der Adressleiste – dort „Zulassen“ tippen."
+      : none ? "Es wurde keine Kamera gefunden."
+      : busy ? "Die Kamera wird gerade von einer anderen App benutzt. Schließe andere Kamera-Apps und versuche es erneut."
+      : "Die Kamera konnte nicht gestartet werden."}</p>
+    <div><button class="btn primary" id="camRetry">Nochmal versuchen</button><label class="btn secondary" for="photoInput">📸 Foto statt Kamera</label></div>`;
+  $("camRetry").onclick = async () => { camHelp(false); await startCam(); placeFrame(); if(!stream) camHelp(true); };
 }
 function closeScanner(silent){
   if(!document.body.classList.contains("scanmode")) return;
