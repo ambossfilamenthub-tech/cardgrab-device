@@ -78,11 +78,14 @@ function links(c){
         <a class="alt" href="${dbUrl(c, false, h.nver > 1 ? h.ver : 0)}" target="_blank" rel="noopener">Direktlink (Versuch) ↗</a>${ebay}${del}</div>`;
     }
     if(h.exact && h.nver > 1){
-      const vbtn = Array.from({length: h.nver}, (_, i) => i + 1 === h.ver ? "" : `<a class="alt" style="flex:0 0 auto;min-width:54px" href="${dbUrl(c, false, i + 1)}" target="_blank" rel="noopener">V${i + 1}</a>`).join("");
+      // Mehrere Produkte gleichen Namens im Set (z. B. Shiny + Promo): Cardmarkets V-Nummer in der Adresse passt
+      // nicht immer zur Reihenfolge der Produkt-IDs (z. B. PAF 192 Knattox) -> Hauptknopf über die Suche nach
+      // „KÜRZEL NNN“, die führt sicher zur richtigen Karte; Direktlinks V1/V2 nur zusätzlich.
+      const vbtn = Array.from({length: h.nver}, (_, i) => `<a class="alt" style="flex:0 0 auto;min-width:54px" href="${dbUrl(c, false, i + 1)}" target="_blank" rel="noopener">V${i + 1}${i + 1 === h.ver ? " ✓" : ""}</a>`).join("");
       return `<div class="links">
-        <a class="cm" href="${dbUrl(c, false, h.ver)}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (V${h.ver} · ${esc(c.cond || "NM")} · DE) ↗</a>
-        <div style="flex:1 1 100%;font-size:11.5px;color:var(--muted)">Cardmarket führt diese Karte ${h.nver}× (z. B. mit Stempel/Promo). Andere Versionen:</div>
-        ${vbtn}<a class="alt" href="${search}" target="_blank" rel="noopener">Suche ${esc(h.code + " " + lid)} ↗</a>${ebay}${del}</div>`;
+        <a class="cm" href="${search}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (${esc(h.code + " " + lid)}) ↗</a>
+        <div style="flex:1 1 100%;font-size:11.5px;color:var(--muted)">Cardmarket führt diese Karte ${h.nver}× im Set. In der Liste die mit „${esc(h.code + " " + lid)}“ antippen – oder direkt (✓ = vermutlich deine):</div>
+        ${vbtn}${ebay}${del}</div>`;
     }
     if(!h.nver || h.nver < 2){
       return `<div class="links">
