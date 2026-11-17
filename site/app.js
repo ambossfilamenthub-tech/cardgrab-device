@@ -1245,17 +1245,35 @@ async function analyzePhoto(file, opts){
   const W = cv.width, H = cv.height;
   // Vorschaubild: Bildmitte im Kartenformat
   // Karte im Foto suchen und gerade ausschneiden (nicht beim Auto-Foto: da liegt sie schon im Rahmen)
-  const st = (!opts || !opts.quick) && typeof straightenCard === "function" ? straightenCard(cv) : null;
+  let st = (!opts || !opts.quick) && typeof straightenCard === "function" ? straightenCard(cv) : null;
   const tw = Math.min(W, H * 63 / 88), th = tw * 88 / 63;
   const thumb = st ? cardThumb(st.canvas, 0, 0, st.canvas.width, st.canvas.height) : cardThumb(cv, (W - tw) / 2, (H - th) / 2, tw, th);
   const box = photoBox(thumb, "Texterkennung startet …");
   const step = t => { const m = box.querySelector("#anaStep"); if(m) m.textContent = t; };
   // 0) Erkennung am Bild (Fingerabdruck) – schnell, braucht keine Texterkennung
   let fpRes = null;
-  const fpSrc = st ? st.canvas : (opts && opts.quick ? cv : null);
-  if(fpSrc && typeof fpIdentify === "function"){
+  // mehrere Ausschnitte probieren: gefundene Karte, andere passende Vierecke, Bildmitte in drei Größen
+  // (z. B. Karte vom Bildschirm abfotografiert oder gelber Rand auf hellem Grund)
+  const quickShot = !!(opts && opts.quick), fpCands = [];
+  if(st) fpCands.push(() => st.canvas);
+  if(quickShot) fpCands.push(() => cv);
+  else {
+    if(st) for(const P of st.alts || []) fpCands.push(() => warpCard(cv, P));
+    if(typeof cardCrop === "function") for(const f of [0.92, 0.8, 0.68]) fpCands.push(() => cardCrop(cv, f));
+  }
+  if(fpCands.length && typeof fpIdentify === "function"){
     step("Erkenne die Karte am Bild …");
-    try{ await Promise.all([cardDbReady, opDbReady]); fpRes = await fpIdentify(fpSrc); }catch(e){ console.warn(e); }
+    let fpBest = null;
+    try{
+      await Promise.all([cardDbReady, opDbReady]);
+      for(const mk of fpCands){
+        const src = mk(), r = await fpIdentify(src);
+        if(r && (!fpRes || r.d < fpRes.d)){ fpRes = r; fpBest = src; }
+        if(fpRes && fpRes.sure) break;
+      }
+    }catch(e){ console.warn(e); }
+    // besserer Ausschnitt gefunden -> auch für die Texterkennung verwenden
+    if(fpRes && fpRes.ok && fpBest && fpBest !== cv && (!st || fpBest !== st.canvas)) st = { canvas: fpBest, alts: [] };
     if(fpRes && fpRes.sure && fpRes.list.length === 1){
       box.remove(); addCard(fpRes.list[0].c, thumb); setStatus("✓ Karte am Bild erkannt."); return;
     }
