@@ -190,15 +190,43 @@ function renderScanUi(){
   const ses = coll.filter(c => c.t >= UI.scanStart).sort((a, b) => b.t - a.t);
   const n = ses.reduce((s, c) => s + qtyOf(c), 0);
   $("scCnt").hidden = !n; $("scCnt").textContent = n;
-  $("scStrip").innerHTML = ses.length ? ses.slice(0, 30).map(miniCard).join("") : `<div class="sempty">Karte in den Rahmen legen – sie erscheint dann hier.</div>`;
+  const pend = PEND.map(p => `<div class="mini pend${p.fail ? " fail" : ""}" data-pend="${p.id}"><span class="mi">${p.thumb ? `<img src="${p.thumb}" alt="">` : ""}<i class="spin">${p.fail ? "❓" : ""}</i></span><small>${p.fail ? "Nicht erkannt" : "Erkenne …"}</small></div>`).join("");
+  $("scStrip").innerHTML = pend + (ses.length ? ses.slice(0, 30).map(miniCard).join("") : pend ? "" : `<div class="sempty">Karte in den Rahmen legen – sie erscheint dann hier.</div>`);
   $("scLockT").textContent = UI.lock ? `Set ${UI.lock}` : "Set fixieren"; $("scLock").classList.toggle("on", !!UI.lock);
   $("scBulkT").textContent = window.UI_SINGLE ? "Einzelbild" : "Serie an"; $("scBulk").classList.toggle("on", !window.UI_SINGLE);
-  $("scShot").hidden = !window.UI_SINGLE;
+  $("scShot").hidden = false;   // Auslöser immer da – falls eine Karte nicht automatisch erkannt wird
   const snd = $("soundToggle"), on = !snd || snd.classList.contains("on");
   $("scSoundT").textContent = on ? "Ton an" : "Ton aus"; $("scSound").classList.toggle("on", on);
   const short = { Deutsch: "DE", Englisch: "EN", Japanisch: "JP" }[LANG] || LANG;
   const gl = myGames(), gtxt = gl.length === ALL_GAMES.length ? "Alle Spiele" : gl.map(g => (ALL_GAMES.find(x => x[0] === g) || [, g])[1]).join(" · ");
   $("scSet").innerHTML = `<i>🎴</i><span><b>${esc(gtxt)}</b><small>${esc(UI.def)} · ${short}${UI.lock ? ` · 🔒 ${esc(UI.lock)}` : ""}</small></span><em>⚙</em>`;
+}
+
+// ---------- Sofort-Rückmeldung beim Scannen ----------
+const PEND = [];
+function feed(html, cls, ms){
+  let el = $("scanFeed"); if(!el){ el = document.createElement("div"); el.id = "scanFeed"; $("scanUi").appendChild(el); }
+  el.className = cls || ""; el.innerHTML = html; el.hidden = false;
+  clearTimeout(feed.t); if(ms) feed.t = setTimeout(() => { el.hidden = true; }, ms);
+}
+function scanPending(id, thumb){
+  PEND.unshift({ id, thumb });
+  feed(`<i class="spin"></i> Karte erfasst – wird erkannt …`, "busy");
+  if(document.body.classList.contains("scanmode")) renderScanUi();
+}
+function scanDone(id, c){
+  const p = PEND.find(x => x.id === id); if(!p) return;
+  if(c){
+    PEND.splice(PEND.indexOf(p), 1);
+    const v = valueOf(c);
+    feed(`✓ <b>${esc(c.name || "Karte")}</b>${v > 0 ? ` · ${eur(v)}` : ""}`, "ok", 2600);
+    if(navigator.vibrate) navigator.vibrate([30, 40, 30]);
+  } else {
+    p.fail = true;
+    feed(`❓ Nicht sicher erkannt – Karte etwas näher/gerader halten oder in der Liste auswählen`, "bad", 3500);
+    setTimeout(() => { const i = PEND.indexOf(p); if(i >= 0){ PEND.splice(i, 1); if(document.body.classList.contains("scanmode")) renderScanUi(); } }, 3500);
+  }
+  if(document.body.classList.contains("scanmode")) renderScanUi();
 }
 
 // ---------- Eingriffe in die vorhandene Logik ----------
