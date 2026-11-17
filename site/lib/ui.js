@@ -19,6 +19,7 @@ const gameOf = c => c.game || (c.ygo ? "yugioh" : c.op ? "onepiece" : "pokemon")
     <div class="hv"><span>Aktueller Wert</span><button class="eye" id="eyeBtn" aria-label="Wert verbergen">👁</button></div>
     <div class="hval" id="homeVal">0 €</div>
     <div class="hchg" id="homeChg"></div>
+    <div class="hsrc">Preise: <b class="cmtxt">Cardmarket</b><img class="cmlogo" src="brand/cardmarket-white.png" alt="Cardmarket"> · Richtwerte, täglich aktualisiert</div>
     <div class="rounds">
       <button data-go="scanner"><i>📷</i><span>Scanner</span></button>
       <button data-go="search"><i>🔍</i><span>Suche</span></button>
@@ -202,6 +203,9 @@ function renderScanUi(){
   const gl = myGames(), gtxt = gl.length === ALL_GAMES.length ? "Alle Spiele" : gl.map(g => (ALL_GAMES.find(x => x[0] === g) || [, g])[1]).join(" · ");
   $("scSet").innerHTML = `<i>🎴</i><span><b>${esc(gtxt)}</b><small>${esc(UI.def)} · ${short}${UI.lock ? ` · 🔒 ${esc(UI.lock)}` : ""}</small></span><em>⚙</em>`;
 }
+
+// Offizielles Cardmarket-Logo nur zeigen, wenn die Datei da ist (sonst bleibt der Schriftzug)
+{ const im = new Image(); im.onload = () => document.body.classList.add("cmlogo-ok"); im.src = "brand/cardmarket-blue.png"; }
 
 // ---------- Sofort-Rückmeldung beim Scannen ----------
 const PEND = [];
