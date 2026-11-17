@@ -104,9 +104,9 @@ function opImgName(c, suf){
 function opImgUrl(c, suf){ const set = c.op.id.startsWith("P-") ? "P" : c.op.id.split("-")[0]; return `https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/one-piece/${set}/${opImgName(c, suf)}.webp`; }
 // Bild + „ähnlich?“ für jede Version (für die Auswahl-Kacheln)
 // Original-Bild der Cardmarket-Version (Pfad „1621/OP16“ aus der Preisliste), sonst Bildarchiv
-// Pfad = Kategorie/Erweiterungs-Kürzel/ID – das Kürzel ist der Set-Code, bei japanischen Ausgaben mit „-JP“
-const cmImgs = (v) => !v ? [] : v.cm ? [`https://product-images.s3.cardmarket.com/${v.cm}/${v.id}/${v.id}.jpg`]
-  : v.pack ? [v.pack, v.pack + "-JP"].map(k => `https://product-images.s3.cardmarket.com/1621/${k}/${v.id}/${v.id}.jpg`) : [];
+// Cardmarket-Produktbilder sind gegen Einbinden in fremde Seiten geschützt (laden nur auf cardmarket.com) –
+// daher nur, falls die Preisliste einmal einen freigegebenen Bildpfad liefert (v.cm); sonst Bildarchiv.
+const cmImgs = (v) => v && v.cm ? [`https://product-images.s3.cardmarket.com/${v.cm}/${v.id}/${v.id}.jpg`] : [];
 function verImgs(c){
   if(c.op){ const m = opVerSufs(c); return m ? m.map((x, i) => { const cm = cmImgs(c.versions[i]), arc = opImgUrl(c, x.suf); return cm.length ? { url: cm[0], alt: [...cm.slice(1), arc].join(" "), approx: x.approx, late: true } : { url: arc, approx: x.approx }; }) : null; }
   if(c.ygo && c.versions) return c.versions.map((v, i) => { const pc = ygoVerPc(c, i); return { url: `https://images.ygoprodeck.com/images/cards_small/${pc}.jpg`, approx: false }; });
