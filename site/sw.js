@@ -1,5 +1,5 @@
 // CardGrab Device – Offline-Cache. App-Dateien & Texterkennung: Cache zuerst; Preise & Seite: Netz zuerst.
-const V = "cgd-v43";
+const V = "cgd-v44";
 const CORE = ["./", "index.html", "legal.html", "app.js", "lib/cards.js", "lib/ygo.js", "lib/collection.js", "lib/sounds.js", "lib/cardfind.js", "lib/manage.js", "lib/extras.js", "lib/center.js", "lib/jp.js", "lib/fp.js", "lib/scanfp.js", "lib/ui.js", "ui.css", "lib/tesseract.min.js", "lib/worker.min.js", "carddb.json", "opdb.json",
   "cardgrab-logo-sm.webp", "cardgrab-logo-md.webp", "manifest.webmanifest", "icons/icon-192.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(V).then(c => c.addAll(CORE)).then(() => self.skipWaiting())); });

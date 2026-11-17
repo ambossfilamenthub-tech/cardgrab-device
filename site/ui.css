@@ -112,3 +112,13 @@ body.ui2.home-on .wrap > .hint{display:none}
 .gtile i{font-style:normal;font-size:30px}.gtile b{font:800 17px system-ui,sans-serif}.gtile small{font:600 11.5px system-ui,sans-serif;opacity:.9}
 .gtile.on{opacity:1;border-color:#fff;box-shadow:0 8px 22px rgba(0,0,0,.35)}
 .g-pokemon{background:linear-gradient(135deg,#7c3aed,#3b82f6)}.g-onepiece{background:linear-gradient(135deg,#0e7490,#1e40af)}.g-yugioh{background:linear-gradient(135deg,#b45309,#7f1d1d)}
+
+/* Versionen als Bild-Kacheln */
+.vers.tiles{flex-wrap:nowrap;overflow-x:auto;gap:8px;padding-bottom:4px;scroll-snap-type:x proximity}
+.vers.tiles .vt{flex:0 0 78px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:5px;position:relative;scroll-snap-align:start}
+.vt img{width:66px;height:92px;object-fit:cover;border-radius:5px;background:rgba(255,255,255,.06)}
+.vt img.gone{visibility:hidden}
+.vt span{font:800 11px system-ui,sans-serif;white-space:nowrap;max-width:70px;overflow:hidden;text-overflow:ellipsis}
+.vt b{font:600 10.5px system-ui,sans-serif;opacity:.85}
+.vt em{position:absolute;top:6px;right:8px;font-style:normal;font-weight:800;background:rgba(0,0,0,.55);border-radius:6px;padding:0 4px;font-size:11px}
+.vers.tiles .vt.on{box-shadow:0 0 0 2px #e879f9}

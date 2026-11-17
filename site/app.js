@@ -34,7 +34,7 @@ function attachPrice(c){
   if(c.jp) return jpPrice(c);
   if(c.op){
     const vs = (OPP && OPP.c && OPP.c[c.op.id]) || [];
-    c.versions = vs.map(v => ({ id: v[0], low: v[1], trend: v[2], avg7: v[3], avg30: v[4], guess: !!v[5], pack: v[6] || "" }));
+    c.versions = vs.map(v => ({ id: v[0], low: v[1], trend: v[2], avg7: v[3], avg30: v[4], guess: !!v[5], pack: v[6] || "", exp: v[7] ?? "" }));
     const i = Math.min(c.vi || 0, Math.max(0, c.versions.length - 1));
     const v = c.versions[i];
     c.price = v ? { low: v.low, trend: v.trend, avg7: v.avg7, avg30: v.avg30, id: v.id } : null;
@@ -53,8 +53,8 @@ async function findImg(c){
   // eigene, gespeicherte Bilder zuerst (img/…), sonst direkt von der Quelle
   // Bilder werden nur verlinkt (nicht selbst gespeichert) – Rechte liegen bei den Herausgebern
   if(c.jp) return jpImg(c);
-  if(c.ygo) return `https://images.ygoprodeck.com/images/cards_small/${c.ygo.pc}.jpg`;
-  if(c.op){ const n = opImgName(c); const set = c.op.id.startsWith("P-") ? "P" : c.op.id.split("-")[0]; return `https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/one-piece/${set}/${n}.webp`; }
+  if(c.ygo) return `https://images.ygoprodeck.com/images/cards_small/${ygoVerPc(c, c.vi || 0)}.jpg`;
+  if(c.op) return opImgUrl(c);
   if(c.db && c.db.sid){
     const langs = langShort(c) === "DE" ? ["de", "en"] : ["en", "de"];
     for(const l of langs){
@@ -68,10 +68,38 @@ async function findImg(c){
 }
 // One Piece: Bildname der gewählten Version (Parallel/Alt Art = _p1, _p2 …)
 function opVariants(c){ const e = OPDB && OPDB.cards[c.op.id]; if(!e) return [""]; const l = (c.op.jp ? e[13] : e[12]) || e[12] || []; const s = [...new Set(["", ...l.map(v => v[0] || "")])]; return s; }
+// Welches Motiv gehört zu welcher Cardmarket-Version (V1, V2 …)?
+// Versionen einer Erweiterung (nach Produkt-ID) ↔ Bilder desselben Sets (normal, Parallel _p1, _p2 …).
+// Englische und japanische Erweiterung haben dieselben Motive -> wiederholt (V1 normal, V2 Parallel, V3 normal …).
+function opVerSufs(c){
+  const vs = c.versions || [], e = OPDB && c.op && OPDB.cards[c.op.id];
+  if(!e || !vs.length) return null;
+  const raw = (c.op.jp ? e[13] : e[12]) || e[12] || [], byPack = new Map();
+  const add = (suf, pk) => { pk = pk || e[11]; if(!byPack.has(pk)) byPack.set(pk, []); const l = byPack.get(pk); if(!l.includes(suf)) l.push(suf); };
+  add("", e[11]); for(const v of raw) if(v[0]) add(v[0], v[1]);
+  const groups = new Map();
+  vs.forEach((v, i) => { const k = v.exp !== "" && v.exp != null ? "e" + v.exp : "p" + v.pack; if(!groups.has(k)) groups.set(k, { pack: v.pack, idx: [] }); groups.get(k).idx.push(i); });
+  const verPacks = new Set(vs.map(v => v.pack)), free = [...byPack.keys()].filter(p => !verPacks.has(p));
+  const out = new Array(vs.length);
+  for(const g of groups.values()){
+    let l = byPack.get(g.pack), approx = false;
+    if(!l){ const j = free.findIndex(p => byPack.get(p).length === g.idx.length); if(j >= 0){ l = byPack.get(free[j]); free.splice(j, 1); } else approx = true; }
+    if(!l){ l = [""]; approx = true; }
+    const odd = g.idx.length % l.length !== 0;
+    g.idx.forEach((i, r) => { out[i] = { suf: l[r % l.length], approx: approx || odd }; });
+  }
+  return out;
+}
 function opImgName(c, suf){
-  const vs = opVariants(c);
-  if(suf === undefined){ const n = c.versions && c.versions.length; suf = n && n === vs.length ? vs[Math.min(c.vi || 0, vs.length - 1)] : ""; }
+  if(suf === undefined){ const m = opVerSufs(c); suf = m ? (m[Math.min(c.vi || 0, m.length - 1)] || {}).suf || "" : ""; }
   return `${c.op.id}${suf ? "_" + suf : ""}_${c.op.jp && !suf ? "JP" : "EN"}`;
+}
+function opImgUrl(c, suf){ const set = c.op.id.startsWith("P-") ? "P" : c.op.id.split("-")[0]; return `https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/one-piece/${set}/${opImgName(c, suf)}.webp`; }
+// Bild + „ähnlich?“ für jede Version (für die Auswahl-Kacheln)
+function verImgs(c){
+  if(c.op){ const m = opVerSufs(c); return m ? m.map(x => ({ url: opImgUrl(c, x.suf), approx: x.approx })) : null; }
+  if(c.ygo && c.versions) return c.versions.map((v, i) => { const pc = ygoVerPc(c, i); return { url: `https://images.ygoprodeck.com/images/cards_small/${pc}.jpg`, approx: false }; });
+  return null;
 }
 const imgSrc = c => { const l = String(c.img || "").split(" ").filter(u => !u.startsWith("img/")); return l[0] || ""; };
 const imgFallback = c => [...String(c.img || "").split(" ").filter(u => !u.startsWith("img/")).slice(1), c.thumb || "-"].join(" ");
@@ -124,6 +152,8 @@ document.addEventListener("click", e => {
   ov.innerHTML = `<img src="${esc(bigImg(im.src))}" alt="" referrerpolicy="no-referrer"><small>Tippen zum Schließen</small>`;
   ov.onclick = () => ov.remove(); document.body.appendChild(ov);
 }, true);
+// Versions-Bild fehlt -> Kachel ohne Bild
+document.addEventListener("error", e => { const im = e.target; if(im instanceof HTMLImageElement && im.classList.contains("vti")) im.classList.add("gone"); }, true);
 // Bild konnte nicht geladen werden -> eigenes Foto zeigen
 document.addEventListener("error", e => {
   const im = e.target; if(!(im instanceof HTMLImageElement) || !im.dataset.fallback) return;
@@ -245,17 +275,23 @@ $("importInput").onchange = async e => {
 };
 
 // ---------------- Kartendarstellung ----------------
+// Versionen als Bild-Kacheln: so sieht man sofort, welches Motiv zu V1, V2 … gehört
+function verTiles(c, label){
+  const im = verImgs(c) || [];
+  return c.versions.map((x, i) => { const m = im[i];
+    return `<button data-ver="${esc(c.id)}" data-i="${i}" class="vt${i === (c.vi || 0) ? " on" : ""}">${m ? `<img class="vti" loading="lazy" referrerpolicy="no-referrer" src="${esc(m.url)}" alt="">${m.approx ? `<em title="Bild evtl. nicht exakt diese Version">≈</em>` : ""}` : ""}<span>${label(x, i)}</span><b>${eur(x.low || x.trend)}</b></button>`; }).join("");
+}
 function cardHTML(c, mode){
   const p = c.price;
   const code = c.op ? c.op.id : c.ygo ? c.number : cmCode(c) || c.number || "";
   const holo = p && (p.trendH || p.lowH);
   const v = valueOf(c);
   const vers = c.ygo && c.versions && c.versions.length > 1
-    ? `<div class="vers">${c.versions.map((x, i) => `<button data-ver="${esc(c.id)}" data-i="${i}" class="${i === (c.vi || 0) ? "on" : ""}">${esc(x.pack || "V" + (i + 1))} · ${eur(x.low || x.trend)}</button>`).join("")}</div>
+    ? `<div class="vers tiles">${verTiles(c, (x, i) => esc(x.pack || "V" + (i + 1)))}</div>
        <div class="note">Diese Karte gibt es in diesem Set ${c.versions.length}× (verschiedene Seltenheiten) – wähle deine.${c.versions.some(x => x.guess) ? " Zuordnung geschätzt – im Zweifel auf Cardmarket prüfen." : ""}</div>`
     : c.op && c.versions && c.versions.length > 1
-    ? `<div class="vers">${c.versions.map((x, i) => `<button data-ver="${esc(c.id)}" data-i="${i}" class="${i === (c.vi || 0) ? "on" : ""}">V${i + 1}${x.pack && x.pack !== (c.op && c.op.id.split("-")[0]) ? " " + esc(x.pack) : ""} · ${eur(x.low || x.trend)}</button>`).join("")}</div>
-       <div class="note">${c.vAuto ? "✓ Version am Bild erkannt – bitte kurz prüfen. " : ""}Diese Karte gibt es ${c.versions.length}× (normal, Parallel/Alt Art, Reprints). Wähle die Version mit deinem Motiv – V1 ist meist die normale Karte.${c.versions.some(x => x.guess) ? " Zuordnung der Versionen geschätzt – im Zweifel auf Cardmarket prüfen." : ""}</div>` : "";
+    ? `<div class="vers tiles">${verTiles(c, (x, i) => `V${i + 1}${x.pack && x.pack !== (c.op && c.op.id.split("-")[0]) ? " " + esc(x.pack) : ""}`)}</div>
+       <div class="note">${c.vAuto ? "✓ Version am Bild erkannt – bitte kurz prüfen. " : ""}Diese Karte gibt es ${c.versions.length}× (normal, Parallel/Alt Art, Reprints). Tippe auf das Bild, das genau wie deine Karte aussieht – V1 ist meist die normale Karte.${c.versions.some(x => x.guess) ? " Zuordnung der Versionen geschätzt – im Zweifel auf Cardmarket prüfen." : ""}</div>` : "";
   const rh = holo ? `<div class="vers"><button data-rh="${esc(c.id)}" data-v="0" class="${!c.rh ? "on" : ""}">Normal</button><button data-rh="${esc(c.id)}" data-v="1" class="${c.rh ? "on" : ""}">Reverse Holo</button></div>` : "";
   const pr = p ? `<div class="prices">
       <div><span>ab ${c.real > 0 ? "(alle)" : p.est ? "(ca.)" : ""}</span><b>${eur(c.rh && p.lowH ? p.lowH : p.low)}</b></div>
@@ -308,7 +344,7 @@ document.addEventListener("click", e => {
   const sb = e.target.closest("[data-say]"); if(sb){ const c = coll.find(x => x.id === sb.dataset.say); if(c) speakCard(c); return; }
   const d = e.target.closest("[data-del]"); if(d){ removeCards([d.dataset.del]); return; }
   const vb = e.target.closest("[data-ver]");
-  if(vb){ const c = coll.find(x => x.id === vb.dataset.ver); if(c){ c.vi = +vb.dataset.i; delete c.vAuto; if(c.op) delete c.img; attachPrice(c); saveCard(c); rerender(c); refreshTotals(); if(c.op) ensureImg(c); } return; }
+  if(vb){ const c = coll.find(x => x.id === vb.dataset.ver); if(c){ c.vi = +vb.dataset.i; delete c.vAuto; if(c.op || c.ygo) delete c.img; attachPrice(c); saveCard(c); rerender(c); refreshTotals(); if(c.op || c.ygo) ensureImg(c); } return; }
   const rb = e.target.closest("[data-rh]");
   if(rb){ const c = coll.find(x => x.id === rb.dataset.rh); if(c){ c.rh = rb.dataset.v === "1"; saveCard(c); rerender(c); refreshTotals(); } }
 });
