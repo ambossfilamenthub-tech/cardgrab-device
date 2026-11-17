@@ -29,8 +29,8 @@ const gameOf = c => c.game || (c.ygo ? "yugioh" : c.op ? "onepiece" : "pokemon")
     <div class="htools">
       <label for="photoInput"><i>📸</i>Foto</label>
       <label for="galleryInput"><i>🖼️</i>Galerie</label>
-      <button id="homeBinder"><i>📒</i>Ordnerseite</button>
-      <button id="homeCenter"><i>📐</i>Zentrierung</button>
+      <button id="homeBinder"><i>📒</i>Ordner&shy;seite</button>
+      <button id="homeCenter"><i>📐</i>Zentrie&shy;rung</button>
       <button id="homeGames"><i>🎴</i>Meine Spiele</button>
     </div>`;
   wrap.insertBefore(home, $("scan"));
