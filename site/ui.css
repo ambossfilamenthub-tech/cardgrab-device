@@ -122,3 +122,85 @@ body.ui2.home-on .wrap > .hint{display:none}
 .vt b{font:600 10.5px system-ui,sans-serif;opacity:.85}
 .vt em{position:absolute;top:6px;right:8px;font-style:normal;font-weight:800;background:rgba(0,0,0,.55);border-radius:6px;padding:0 4px;font-size:11px}
 .vers.tiles .vt.on{box-shadow:0 0 0 2px #e879f9}
+
+/* ================= TCG-Stil: Knöpfe wie Holo-Karten, Energie-Münzen und Foil ================= */
+@keyframes foil{0%{transform:translateX(-130%) skewX(-20deg)}55%,100%{transform:translateX(230%) skewX(-20deg)}}
+@keyframes spinrim{to{transform:rotate(1turn)}}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(34,211,238,.55),0 10px 26px rgba(168,85,247,.5)}50%{box-shadow:0 0 0 8px rgba(34,211,238,0),0 10px 26px rgba(168,85,247,.5)}}
+/* Foil-Glanz, der über Knöpfe läuft */
+body.ui2 .btn.primary,body.ui2 .hcard button,.rounds i,.htools label,.htools button,.gtile.on,body.ui2 .chip.on{position:relative;overflow:hidden;isolation:isolate}
+body.ui2 .btn.primary::after,body.ui2 .hcard button::after,.rounds i::after,.htools label::after,.htools button::after,.gtile.on::after,body.ui2 .chip.on::after{content:"";position:absolute;top:-20%;bottom:-20%;left:0;width:45%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),rgba(255,240,255,.15) 60%,transparent);animation:foil 4.2s ease-in-out infinite;pointer-events:none;z-index:2;mix-blend-mode:overlay}
+.htools label::after,.htools button::after{animation-duration:6s}
+.htools > :nth-child(2)::after{animation-delay:.25s}.htools > :nth-child(3)::after{animation-delay:.5s}.htools > :nth-child(4)::after{animation-delay:.75s}.htools > :nth-child(5)::after{animation-delay:1s}
+.rounds button:nth-child(2) i::after{animation-delay:.6s}.rounds button:nth-child(3) i::after{animation-delay:1.2s}
+
+/* Hauptknöpfe: dicke Holo-Taste mit Kante (wie ein Booster-Pack) */
+body.ui2 .btn.primary{background:linear-gradient(115deg,#f0abfc 0%,#c084fc 22%,#818cf8 45%,#22d3ee 70%,#a7f3d0 100%);color:#1a0b3d;text-transform:uppercase;letter-spacing:.6px;font-weight:900;border-radius:14px;
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.65),inset 0 -3px 0 rgba(60,20,120,.35),0 5px 0 #5b21b6,0 10px 22px rgba(124,58,237,.45);text-shadow:0 1px 0 rgba(255,255,255,.5);transition:transform .08s,box-shadow .08s}
+body.ui2 .btn.primary:active{transform:translateY(4px);box-shadow:inset 0 2px 0 rgba(255,255,255,.6),0 1px 0 #5b21b6,0 4px 12px rgba(124,58,237,.4)}
+/* Zweitknöpfe: Kartenrahmen mit Verlaufskante */
+body.ui2 .btn.secondary{border:2px solid transparent;background:linear-gradient(#2a1d5e,#22174d) padding-box,linear-gradient(120deg,#f0abfc,#818cf8,#22d3ee) border-box;color:#f3eaff;border-radius:12px;box-shadow:0 3px 0 rgba(20,10,50,.7)}
+body.ui2 .btn.secondary:active{transform:translateY(2px);box-shadow:none}
+
+/* Runde Startknöpfe: Energie-Münzen mit Holo-Rand */
+.rounds i{width:80px;height:80px;border:4px solid transparent;font-size:32px;text-shadow:0 2px 6px rgba(0,0,0,.45);transition:transform .12s;
+  background:radial-gradient(circle at 34% 26%,rgba(255,255,255,.6),transparent 30%) padding-box,radial-gradient(circle at 50% 62%,#8b5cf6,#3b0f8a 78%) padding-box,conic-gradient(from 20deg,#f0abfc,#22d3ee,#a7f3d0,#818cf8,#ec4899,#f0abfc) border-box;
+  box-shadow:inset 0 0 0 3px rgba(19,11,46,.55),inset 0 -10px 18px rgba(20,8,60,.55),0 10px 26px rgba(168,85,247,.5)}
+.rounds button:nth-child(2) i{background:radial-gradient(circle at 34% 26%,rgba(255,255,255,.6),transparent 30%) padding-box,radial-gradient(circle at 50% 62%,#22d3ee,#1e3a8a 80%) padding-box,conic-gradient(from 20deg,#f0abfc,#22d3ee,#a7f3d0,#818cf8,#ec4899,#f0abfc) border-box}
+.rounds button:nth-child(3) i{background:radial-gradient(circle at 34% 26%,rgba(255,255,255,.6),transparent 30%) padding-box,radial-gradient(circle at 50% 62%,#f472b6,#831843 80%) padding-box,conic-gradient(from 20deg,#f0abfc,#22d3ee,#a7f3d0,#818cf8,#ec4899,#f0abfc) border-box}
+.rounds i::after{border-radius:50%}
+.rounds button:first-child i{animation:pulse 2.4s ease-out infinite}
+.rounds button span{font-weight:800;letter-spacing:.3px;text-shadow:0 1px 6px rgba(124,58,237,.8)}
+.rounds button:active i{transform:scale(.92) rotate(-6deg);filter:brightness(1.15)}
+
+/* Werkzeuge: kleine Sammelkarten mit Rahmen, Seltenheits-Stern und Holo-Glanz */
+.htools label,.htools button{border-radius:10px;padding:10px 2px 9px;font-size:10.5px!important;line-height:1.15;text-align:center;overflow-wrap:anywhere;hyphens:auto;border:2px solid transparent;
+  background:linear-gradient(160deg,rgba(255,255,255,.12),transparent 40%) padding-box,linear-gradient(180deg,#3a2a85,#21175a) padding-box,linear-gradient(140deg,#f0abfc,#818cf8 35%,#22d3ee 65%,#f472b6) border-box;
+  box-shadow:inset 0 0 0 1px rgba(10,5,30,.6),0 4px 0 rgba(15,8,40,.8),0 8px 16px rgba(76,29,149,.35);font-weight:800;transition:transform .1s}
+.htools label:active,.htools button:active{transform:translateY(3px) rotate(-1.5deg);box-shadow:inset 0 0 0 1px rgba(10,5,30,.6),0 1px 0 rgba(15,8,40,.8)}
+.htools i{font-size:24px;width:38px;height:38px;display:grid;place-items:center;border-radius:50%;background:radial-gradient(circle at 40% 35%,rgba(255,255,255,.35),rgba(255,255,255,.05) 60%);box-shadow:inset 0 0 0 1px rgba(255,255,255,.2)}
+.htools label::before,.htools button::before{content:"✦";position:absolute;top:3px;right:5px;font-size:9px;color:#fde68a;text-shadow:0 0 6px rgba(253,230,138,.9);z-index:3}
+
+/* „Hinzufügen“ auf der Startseite */
+.hcard{border:2px solid transparent;background:linear-gradient(135deg,rgba(192,132,252,.45),rgba(34,211,238,.28)) padding-box,linear-gradient(120deg,#f0abfc,#22d3ee,#f472b6) border-box;box-shadow:0 8px 24px rgba(76,29,149,.35)}
+body.ui2 .hcard button{background:linear-gradient(115deg,#fff,#fdf4ff 40%,#cffafe);box-shadow:0 4px 0 #6d28d9,0 8px 18px rgba(0,0,0,.25);text-transform:uppercase;letter-spacing:.2px;font-weight:900!important;font-size:13.5px!important;padding:10px 14px!important;flex:0 0 auto;white-space:nowrap}
+body.ui2 .hcard button:active{transform:translateY(3px);box-shadow:0 1px 0 #6d28d9}
+
+/* Spiel-Auswahl oben */
+.gamepill{border:2px solid transparent;background:linear-gradient(#2c1d63,#211650) padding-box,linear-gradient(120deg,#f0abfc,#22d3ee) border-box;box-shadow:0 3px 0 rgba(15,8,40,.8);font-weight:800}
+
+/* Chips (Sprache, Filter): Seltenheits-Plaketten */
+body.ui2 .chip{border-radius:8px;font-weight:800;box-shadow:0 2px 0 rgba(15,8,40,.8)}
+body.ui2 .chip.on{background:linear-gradient(115deg,#f0abfc,#c084fc 35%,#22d3ee);color:#1a0b3d;box-shadow:0 2px 0 #5b21b6,0 0 12px rgba(192,132,252,.5)}
+
+/* Leiste unten: aktiver Punkt wie ein leuchtender Edelstein, Scan-Knopf als Energie-Kern */
+#nav button{position:relative}
+#nav button.on::before{content:"";position:absolute;top:-7px;left:50%;width:26px;height:4px;margin-left:-13px;border-radius:0 0 6px 6px;background:linear-gradient(90deg,#f0abfc,#22d3ee);box-shadow:0 0 10px rgba(34,211,238,.9)}
+#nav button[data-go="scanner"] i{width:46px;height:46px;margin-top:-20px;border-radius:50%;display:grid;place-items:center;font-size:24px;color:#fff;border:3px solid transparent;
+  background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.6),transparent 35%) padding-box,radial-gradient(circle,#a855f7,#4c1d95) padding-box,conic-gradient(#f0abfc,#22d3ee,#a7f3d0,#818cf8,#ec4899,#f0abfc) border-box;box-shadow:0 6px 16px rgba(124,58,237,.6)}
+
+/* Scanner: Auslöser als Energie-Ring, Seitenknöpfe als Kartenmarken */
+.shutter{border:0;background:radial-gradient(circle,rgba(255,255,255,.95) 0 46%,transparent 47%),conic-gradient(#f0abfc,#22d3ee,#a7f3d0,#818cf8,#ec4899,#f0abfc);box-shadow:0 0 0 4px rgba(255,255,255,.25),0 0 22px rgba(192,132,252,.8)}
+.shutter:active{transform:scale(.9)}
+.sside i{border-radius:10px;border:2px solid transparent;background:linear-gradient(rgba(40,24,90,.75),rgba(40,24,90,.75)) padding-box,linear-gradient(140deg,#f0abfc,#22d3ee) border-box;box-shadow:0 3px 0 rgba(0,0,0,.45)}
+.sside button.on i{background:linear-gradient(145deg,#a855f7,#06b6d4) padding-box,linear-gradient(140deg,#fff,#f0abfc) border-box;box-shadow:0 0 14px rgba(34,211,238,.8)}
+
+/* Spiel-Kacheln und Versions-Kacheln: Holo-Rahmen bei Auswahl */
+.gtile{border-radius:14px}
+.gtile.on{border-color:transparent;background-clip:padding-box;box-shadow:0 0 0 3px #f0abfc,0 0 0 6px rgba(34,211,238,.6),0 10px 24px rgba(0,0,0,.35)}
+.vers.tiles .vt{border-radius:10px}
+.vers.tiles .vt.on{box-shadow:0 0 0 2px #f0abfc,0 0 14px rgba(34,211,238,.7)}
+
+@media (prefers-reduced-motion: reduce){
+  body.ui2 *::after,.rounds button:first-child i{animation:none!important}
+}
+/* Karten-Aktionen im TCG-Stil */
+body.ui2 .links a.cm{background:linear-gradient(115deg,#a7f3d0,#22d3ee 35%,#818cf8 70%,#f0abfc);color:#140a33;font-weight:900;letter-spacing:.2px;border-radius:12px;position:relative;overflow:hidden;
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.6),0 4px 0 #3730a3,0 8px 18px rgba(34,211,238,.3)}
+body.ui2 .links a.cm::after{content:"";position:absolute;top:-20%;bottom:-20%;left:0;width:40%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);animation:foil 5s ease-in-out infinite;mix-blend-mode:overlay;pointer-events:none}
+body.ui2 .links a.cm:active{transform:translateY(3px);box-shadow:0 1px 0 #3730a3}
+body.ui2 .links a.alt,body.ui2 .links button,body.ui2 [data-edit]{border:2px solid transparent;background:linear-gradient(#271a58,#1f1549) padding-box,linear-gradient(130deg,rgba(240,171,252,.8),rgba(34,211,238,.8)) border-box;color:#ece4ff;box-shadow:0 3px 0 rgba(15,8,40,.8);border-radius:11px}
+body.ui2 .links button[data-del]{background:linear-gradient(#271a58,#1f1549) padding-box,linear-gradient(130deg,#fb7185,#f472b6) border-box;color:#fecdd3}
+body.ui2 .links a.alt:active,body.ui2 .links button:active,body.ui2 [data-edit]:active{transform:translateY(2px);box-shadow:none}
+/* Leiste unten undurchsichtig */
+#nav{background:linear-gradient(180deg,#2b1966,#170f3f)}
