@@ -238,9 +238,9 @@ body.ui2 .links a.alt:active,body.ui2 .links button:active,body.ui2 [data-edit]:
 
 .prices .psrc{grid-column:1/-1;text-align:center;font:600 11px system-ui,sans-serif;color:var(--muted);margin-top:2px}
 /* offizielles Cardmarket-Logo (Datei von help.cardmarket.com/en/Downloads, unverändert) */
-.cmlogo{height:14px;width:auto;vertical-align:-3px;margin-left:2px}
-.hsrc .cmlogo{height:16px}
-body.ui2.cmlogo-ok .links a.cm::before{content:"";display:inline-block;flex:0 0 auto;width:64px;height:24px;margin-right:8px;vertical-align:middle;border-radius:7px;background:#fff url(brand/cardmarket-blue.png) center/54px auto no-repeat;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.cmlogo{height:24px;width:auto;vertical-align:-7px;margin-left:3px;background:#fff;border-radius:6px;padding:0 2px;box-sizing:content-box}
+.hsrc .cmlogo{height:26px}
+body.ui2.cmlogo-ok .links a.cm::before{content:"";display:inline-block;flex:0 0 auto;width:76px;height:28px;margin-right:8px;vertical-align:middle;border-radius:7px;background:#fff url(brand/cardmarket-blue.png) center/76px auto no-repeat;box-shadow:0 1px 3px rgba(0,0,0,.25)}
 body:not(.cmlogo-ok) .cmlogo{display:none}
 body.cmlogo-ok .cmtxt{display:none}
 .hsrc .cmtxt{color:#a5f3fc}

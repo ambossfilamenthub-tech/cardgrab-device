@@ -314,7 +314,7 @@ function cardHTML(c, mode){
       <div><span>ab ${c.real > 0 ? "(alle)" : p.est ? "(ca.)" : ""}</span><b>${eur(c.rh && p.lowH ? p.lowH : p.low)}</b></div>
       <div><span>Trend</span><b>${eur(c.rh && p.trendH ? p.trendH : p.trend)}</b></div>
       <div><span>30-T-Ø</span><b>${eur(c.rh && p.avg30H ? p.avg30H : p.avg30)}</b></div>
-      <small class="psrc">Preise: <b class="cmtxt">Cardmarket</b><img class="cmlogo" src="brand/cardmarket-white.png" alt="Cardmarket">${c.real > 0 ? " · ✓ eigener Preis" : ""}</small></div>`
+      <small class="psrc">Preise: <b class="cmtxt">Cardmarket</b><img class="cmlogo" src="brand/cardmarket-blue.png" alt="Cardmarket">${c.real > 0 ? " · ✓ eigener Preis" : ""}</small></div>`
     : `<div class="note">${(c.op ? OPP : c.ygo ? YGOP : PP) ? "Für diese Karte steht kein Preis in der Cardmarket-Liste – tippe auf den Cardmarket-Button." : "Preisliste noch nicht geladen (sie wird jeden Morgen aktualisiert)."}</div>`;
   return `<div class="card ${mode || ""}" data-card="${esc(c.id)}">
     <div class="rowc">
