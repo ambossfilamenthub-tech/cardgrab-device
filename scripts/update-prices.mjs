@@ -191,7 +191,7 @@ async function onepiece(){
   const prodExp = new Map(products.map(p => [p.id, p.exp]));
   // Cardmarket-Kürzel je Erweiterung (z. B. „OP16“, „OP16-JP“) – steht im Pfad der Produktbilder.
   // Wird einmal pro Erweiterung über eine HEAD-Anfrage ermittelt und in data/cm-exp-codes.json gemerkt.
-  const expCode = await cmExpCodes(products, map, expPack, op);
+  const expCode = {};   // Bildpfad ermittelt die App selbst (Server-Prüfungen werden von Cardmarket nicht beantwortet)
   const c = {};
   for(const [id, code] of [...map.entries()].sort((a, b) => a[0] - b[0])){
     const pr = prices.get(id) || [0, 0, 0, 0], ex = prodExp.get(id);
