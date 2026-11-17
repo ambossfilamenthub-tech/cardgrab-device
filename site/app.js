@@ -34,7 +34,7 @@ function attachPrice(c){
   if(c.jp) return jpPrice(c);
   if(c.op){
     const vs = (OPP && OPP.c && OPP.c[c.op.id]) || [];
-    c.versions = vs.map(v => ({ id: v[0], low: v[1], trend: v[2], avg7: v[3], avg30: v[4], guess: !!v[5], pack: v[6] || "", exp: v[7] ?? "" }));
+    c.versions = vs.map(v => ({ id: v[0], low: v[1], trend: v[2], avg7: v[3], avg30: v[4], guess: !!v[5], pack: v[6] || "", exp: v[7] ?? "", cm: v[8] || "" }));
     const i = Math.min(c.vi || 0, Math.max(0, c.versions.length - 1));
     const v = c.versions[i];
     c.price = v ? { low: v.low, trend: v.trend, avg7: v.avg7, avg30: v.avg30, id: v.id } : null;
@@ -54,7 +54,7 @@ async function findImg(c){
   // Bilder werden nur verlinkt (nicht selbst gespeichert) – Rechte liegen bei den Herausgebern
   if(c.jp) return jpImg(c);
   if(c.ygo) return `https://images.ygoprodeck.com/images/cards_small/${ygoVerPc(c, c.vi || 0)}.jpg`;
-  if(c.op) return opImgUrl(c);
+  if(c.op){ const cm = cmImg(c.versions && c.versions[Math.min(c.vi || 0, c.versions.length - 1)]); return cm ? `${cm} ${opImgUrl(c)}` : opImgUrl(c); }
   if(c.db && c.db.sid){
     const langs = langShort(c) === "DE" ? ["de", "en"] : ["en", "de"];
     for(const l of langs){
@@ -103,8 +103,10 @@ function opImgName(c, suf){
 }
 function opImgUrl(c, suf){ const set = c.op.id.startsWith("P-") ? "P" : c.op.id.split("-")[0]; return `https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/one-piece/${set}/${opImgName(c, suf)}.webp`; }
 // Bild + „ähnlich?“ für jede Version (für die Auswahl-Kacheln)
+// Original-Bild der Cardmarket-Version (Pfad „1621/OP16“ aus der Preisliste), sonst Bildarchiv
+const cmImg = (v) => v && v.cm ? `https://product-images.s3.cardmarket.com/${v.cm}/${v.id}/${v.id}.jpg` : "";
 function verImgs(c){
-  if(c.op){ const m = opVerSufs(c); return m ? m.map(x => ({ url: opImgUrl(c, x.suf), approx: x.approx })) : null; }
+  if(c.op){ const m = opVerSufs(c); return m ? m.map((x, i) => { const cm = cmImg(c.versions[i]), alt = opImgUrl(c, x.suf); return cm ? { url: cm, alt, approx: false } : { url: alt, approx: x.approx }; }) : null; }
   if(c.ygo && c.versions) return c.versions.map((v, i) => { const pc = ygoVerPc(c, i); return { url: `https://images.ygoprodeck.com/images/cards_small/${pc}.jpg`, approx: false }; });
   return null;
 }
@@ -160,7 +162,7 @@ document.addEventListener("click", e => {
   ov.onclick = () => ov.remove(); document.body.appendChild(ov);
 }, true);
 // Versions-Bild fehlt -> Kachel ohne Bild
-document.addEventListener("error", e => { const im = e.target; if(im instanceof HTMLImageElement && im.classList.contains("vti")) im.classList.add("gone"); }, true);
+document.addEventListener("error", e => { const im = e.target; if(!(im instanceof HTMLImageElement) || !im.classList.contains("vti")) return; if(im.dataset.alt){ im.src = im.dataset.alt; im.removeAttribute("data-alt"); } else im.classList.add("gone"); }, true);
 // Bild konnte nicht geladen werden -> eigenes Foto zeigen
 document.addEventListener("error", e => {
   const im = e.target; if(!(im instanceof HTMLImageElement) || !im.dataset.fallback) return;
@@ -286,7 +288,7 @@ $("importInput").onchange = async e => {
 function verTiles(c, label){
   const im = verImgs(c) || [];
   return c.versions.map((x, i) => { const m = im[i];
-    return `<button data-ver="${esc(c.id)}" data-i="${i}" class="vt${i === (c.vi || 0) ? " on" : ""}">${m ? `<img class="vti" loading="lazy" referrerpolicy="no-referrer" src="${esc(m.url)}" alt="">${m.approx ? `<em title="Bild evtl. nicht exakt diese Version">≈</em>` : ""}` : ""}<span>${label(x, i)}</span><b>${eur(x.low || x.trend)}</b></button>`; }).join("");
+    return `<button data-ver="${esc(c.id)}" data-i="${i}" class="vt${i === (c.vi || 0) ? " on" : ""}">${m ? `<img class="vti" loading="lazy" referrerpolicy="no-referrer" src="${esc(m.url)}"${m.alt ? ` data-alt="${esc(m.alt)}"` : ""} alt="">${m.approx ? `<em title="Bild evtl. nicht exakt diese Version">≈</em>` : ""}` : ""}<span>${label(x, i)}</span><b>${eur(x.low || x.trend)}</b></button>`; }).join("");
 }
 function cardHTML(c, mode){
   const p = c.price;
@@ -297,7 +299,7 @@ function cardHTML(c, mode){
     ? `<div class="vers tiles">${verTiles(c, (x, i) => esc(x.pack || "V" + (i + 1)))}</div>
        <div class="note">Diese Karte gibt es in diesem Set ${c.versions.length}× (verschiedene Seltenheiten) – wähle deine.${c.versions.some(x => x.guess) ? " Zuordnung geschätzt – im Zweifel auf Cardmarket prüfen." : ""}</div>`
     : c.op && c.versions && c.versions.length > 1
-    ? `<div class="vers tiles">${verTiles(c, (x, i) => `V${i + 1}${x.pack && x.pack !== (c.op && c.op.id.split("-")[0]) ? " " + esc(x.pack) : ""}`)}</div>
+    ? `<div class="vers tiles">${verTiles(c, (x, i) => `V${i + 1} ${esc(x.cm ? x.cm.split("/").pop() : x.pack || "")}`)}</div>
        <div class="note">${c.vAuto ? "✓ Version am Bild erkannt – bitte kurz prüfen. " : ""}Diese Karte gibt es ${c.versions.length}× (normal, Parallel/Alt Art, Reprints). Tippe auf das Bild, das genau wie deine Karte aussieht – V1 ist meist die normale Karte.${c.versions.some(x => x.guess) ? " Zuordnung der Versionen geschätzt – im Zweifel auf Cardmarket prüfen." : ""}</div>` : "";
   const rh = holo ? `<div class="vers"><button data-rh="${esc(c.id)}" data-v="0" class="${!c.rh ? "on" : ""}">Normal</button><button data-rh="${esc(c.id)}" data-v="1" class="${c.rh ? "on" : ""}">Reverse Holo</button></div>` : "";
   const pr = p ? `<div class="prices">
