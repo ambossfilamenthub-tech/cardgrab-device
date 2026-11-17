@@ -81,9 +81,16 @@ function opVerSufs(c){
   vs.forEach((v, i) => { const k = v.exp !== "" && v.exp != null ? "e" + v.exp : "p" + v.pack; if(!groups.has(k)) groups.set(k, { pack: v.pack, idx: [] }); groups.get(k).idx.push(i); });
   const verPacks = new Set(vs.map(v => v.pack)), free = [...byPack.keys()].filter(p => !verPacks.has(p));
   const out = new Array(vs.length);
+  // Versionen ohne eigenes Bild-Set (z. B. Reprint-Sets wie PRB01, bei Cardmarket anders benannt):
+  // passendes übriges Bild-Set mit gleicher Anzahl, zusammenhängende Produkt-IDs zuerst – als „≈“ markiert
+  const spread = g => Math.max(...g.idx.map(i => vs[i].id)) - Math.min(...g.idx.map(i => vs[i].id));
+  const take = new Map();
+  for(const g of [...groups.values()].filter(g => !byPack.has(g.pack)).sort((a, b) => spread(a) - spread(b))){
+    const j = free.findIndex(p => byPack.get(p).length === g.idx.length); if(j >= 0){ take.set(g, byPack.get(free[j])); free.splice(j, 1); }
+  }
   for(const g of groups.values()){
     let l = byPack.get(g.pack), approx = false;
-    if(!l){ const j = free.findIndex(p => byPack.get(p).length === g.idx.length); if(j >= 0){ l = byPack.get(free[j]); free.splice(j, 1); } else approx = true; }
+    if(!l){ l = take.get(g); approx = true; }
     if(!l){ l = [""]; approx = true; }
     const odd = g.idx.length % l.length !== 0;
     g.idx.forEach((i, r) => { out[i] = { suf: l[r % l.length], approx: approx || odd }; });
