@@ -19,7 +19,7 @@ const gameOf = c => c.game || (c.ygo ? "yugioh" : c.op ? "onepiece" : "pokemon")
     <div class="hv"><span>Aktueller Wert</span><button class="eye" id="eyeBtn" aria-label="Wert verbergen">👁</button></div>
     <div class="hval" id="homeVal">0 €</div>
     <div class="hchg" id="homeChg"></div>
-    <div class="hsrc">Preise: <b class="cmtxt">Cardmarket</b><img class="cmlogo" src="brand/cardmarket-white.png" alt="Cardmarket"> · Richtwerte, täglich aktualisiert</div>
+    <div class="hsrc">Preise: <b class="cmtxt">Cardmarket</b><img class="cmlogo" src="brand/cardmarket-blue.png" alt="Cardmarket"> · Richtwerte, täglich aktualisiert</div>
     <div class="rounds">
       <button data-go="scanner"><i>📷</i><span>Scanner</span></button>
       <button data-go="search"><i>🔍</i><span>Suche</span></button>
