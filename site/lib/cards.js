@@ -68,37 +68,15 @@ function links(c){
     const h = vv ? { ...c.db, ver: vv[0], nver: vv[1], exact: true } : c.db;
     const lid = /^\d+$/.test(h.lid) && /^(sv|me|swsh|30th|202[1-9])/.test(h.sid || "") ? h.lid.padStart(3, "0") : h.lid;
     const search = S + encodeURIComponent(`${h.code} ${lid}`);
-    // Direkte Kartenseite nur dort, wo Cardmarkets Adressschema geprüft ist (Karmesin & Purpur, Mega-Entwicklung,
-    // 30 Jahre, McDonald's 2024). Ältere Sets (z. B. Drachenwandel: ".../Evolving-Skies/Nickit" ohne Kürzel)
-    // folgen keinem festen Schema -> dort führt die Suche nach "KÜRZEL NNN" zur Karte.
-    const verified = /^(sv|me|30th)/.test(h.sid || "") || h.code === "M24";
-    if(!verified){
-      return `<div class="links">
-        <a class="cm" href="${search}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (${esc(h.code + " " + lid)}) ↗</a>
-        <a class="alt" href="${dbUrl(c, false, h.nver > 1 ? h.ver : 0)}" target="_blank" rel="noopener">Direktlink (Versuch) ↗</a>${ebay}${del}</div>`;
-    }
-    if(h.exact && h.nver > 1){
-      // Mehrere Produkte gleichen Namens im Set (z. B. Shiny + Promo): Cardmarkets V-Nummer in der Adresse passt
-      // nicht immer zur Reihenfolge der Produkt-IDs (z. B. PAF 192 Knattox) -> Hauptknopf über die Suche nach
-      // „KÜRZEL NNN“, die führt sicher zur richtigen Karte; Direktlinks V1/V2 nur zusätzlich.
-      const vbtn = Array.from({length: h.nver}, (_, i) => `<a class="alt" style="flex:0 0 auto;min-width:54px" href="${dbUrl(c, false, i + 1)}" target="_blank" rel="noopener">V${i + 1}${i + 1 === h.ver ? " ✓" : ""}</a>`).join("");
-      return `<div class="links">
-        <a class="cm" href="${search}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (${esc(h.code + " " + lid)}) ↗</a>
-        <div style="flex:1 1 100%;font-size:11.5px;color:var(--muted)">Cardmarket führt diese Karte ${h.nver}× im Set. In der Liste die mit „${esc(h.code + " " + lid)}“ antippen – oder direkt (✓ = vermutlich deine):</div>
-        ${vbtn}${ebay}${del}</div>`;
-    }
-    if(!h.nver || h.nver < 2){
-      return `<div class="links">
-        <a class="cm" href="${dbUrl(c, false, 0)}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (${esc(c.cond || "NM")} · DE) ↗</a>
-        <a class="alt" href="${search}" target="_blank" rel="noopener">Suche ${esc(h.code + " " + lid)} ↗</a>${ebay}${del}</div>`;
-    }
-    // Die Karte gibt es im Set mehrfach (z. B. normale Karte + Illustration Rare). Cardmarket nummeriert diese
-    // Versionen nicht nach einem festen Schema -> Suche nach "KÜRZEL NNN" führt direkt hin, dazu Versions-Knöpfe.
-    const vbtn = Array.from({length: h.nver}, (_, i) => `<a class="alt" style="flex:0 0 auto;min-width:54px" href="${dbUrl(c, false, i + 1)}" target="_blank" rel="noopener">V${i + 1}</a>`).join("");
+    // Getestet direkt auf Cardmarket (11/2026): Die Suche „Englischer Name + Kürzel + Nummer“
+    // (z. B. „Varoom PAF 192“, „Umbreon VMAX EVS 215“, „Charizard ex MEW 006“) springt sofort auf die richtige
+    // Kartenseite – auch bei alten Sets und Karten mit mehreren Versionen. Selbst gebaute Direktlinks lagen
+    // dort oft daneben (Cardmarket vergibt V1/V2 nicht nach festen Regeln).
+    const exact = S + encodeURIComponent(`${h.en} ${h.code} ${lid}`);
     return `<div class="links">
-      <a class="cm" href="${search}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (${esc(h.code + " " + lid)}) ↗</a>
-      <div style="flex:1 1 100%;font-size:11.5px;color:var(--muted)">Diese Karte gibt es im Set ${h.nver}× – falls Cardmarket eine Liste zeigt, die mit „${esc(h.code + " " + lid)}“ antippen, oder direkt:</div>
-      ${vbtn}${ebay}${del}</div>`;
+        <a class="cm" href="${exact}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (${esc(h.code + " " + lid)}) ↗</a>
+        <div style="flex:1 1 100%;font-size:11.5px;color:var(--muted)">Auf der Kartenseite oben Sprache „${esc(c.language || "Deutsch")}“ und Zustand wählen.</div>
+        <a class="alt" href="${search}" target="_blank" rel="noopener">Nur „${esc(h.code + " " + lid)}“ suchen ↗</a>${ebay}${del}</div>`;
   }
   // ohne Datenbank-Treffer: bisheriges Verfahren
   const direct = productUrl(c);
@@ -320,13 +298,14 @@ function opLinks(c){
   const lang = c.op && c.op.jp ? "JP" : "EN";
   // Name-Suche findet die Karte immer (Nummern stehen bei Cardmarket nicht zuverlässig im Produktnamen)
   const nm = c.name_en || (c.op && c.op.name) || c.name;
-  const byName = "https://www.cardmarket.com/de/OnePiece/Products/Search?" + CMQ(c) + "&searchString=" + encodeURIComponent(nm);
+  // Getestet: „Name + Nummer“ (z. B. „Yamato OP16-098“) zeigt genau die Versionen dieser Karte (EN + Asia, V1/V2 …)
+  const byName = "https://www.cardmarket.com/de/OnePiece/Products/Search?" + CMQ(c) + "&searchString=" + encodeURIComponent(c.op ? `${nm} ${id}` : nm);
   const setT = c.op && c.op.pack ? opTitle(c.op.pack) : (c.set || "");
   const ebay = `<a class="alt" href="https://www.ebay.de/sch/i.html?_nkw=${encodeURIComponent([id, c.name_en || c.name, "one piece"].filter(Boolean).join(" "))}&LH_Sold=1&LH_Complete=1" target="_blank" rel="noopener">eBay verkauft ↗</a>`;
   const del = `<button data-del="${esc(c.id)}">Entfernen</button>`;
   return `<div class="links">
-    <a class="cm" href="${byName}" target="_blank" rel="noopener">Auf Cardmarket suchen: ${esc(nm)} (DE · ${lang} · ${esc(c.cond || "NM")}) ↗</a>
-    ${setT ? `<div style="flex:1 1 100%;font-size:11.5px;color:var(--muted)">In der Liste die Karte aus „${esc(setT)}“ mit Nr. ${esc(id)} wählen.</div>` : ""}
+    <a class="cm" href="${byName}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen: ${esc(nm)} ${esc(c.op ? id : "")} ↗</a>
+    <div style="flex:1 1 100%;font-size:11.5px;color:var(--muted)">Cardmarket zeigt alle Versionen dieser Karte${setT ? ` – deine ist aus „${esc(setT)}“` : ""}${c.op && c.op.jp ? " (japanisch = „Asia Region Legal“)" : ""}.</div>
     ${direct ? `<a class="alt" href="${direct}" target="_blank" rel="noopener">Direktlink (Versuch) ↗</a>` : ""}
     <a class="alt" href="${search}" target="_blank" rel="noopener">Suche ${esc(id)} ↗</a>
     ${ebay}${del}</div>`;

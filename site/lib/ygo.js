@@ -108,15 +108,14 @@ function ygoVerPc(c, i){
 function ygoLinks(c){
   const v = c.versions && c.versions[Math.min(c.vi || 0, c.versions.length - 1)];
   const search = "https://www.cardmarket.com/de/YuGiOh/Products/Search?" + CMQ(c) + "&searchString=" + encodeURIComponent(c.name_en || c.name);
-  let direct = "";
-  if(c.set && c.name_en && c.versions && c.versions.length){
-    const k = c.versions.length > 1 ? "-V" + (c.versions.indexOf(v) + 1) : "";
-    direct = `https://www.cardmarket.com/de/YuGiOh/Products/Singles/${slug(c.set)}/${slug(c.name_en)}${k}?${CMQ(c)}`;
-  }
+  // Getestet: die Suche nach dem Set-Code (z. B. „LOB-EN001“) springt direkt auf die Kartenseite;
+  // selbst gebaute Direktlinks landeten oft nur auf der Set-Übersicht
+  const pcode = /^[A-Z0-9]{2,5}-[A-Z]{0,2}\d{2,3}$/i.test(c.number || "") ? String(c.number).toUpperCase() : "";
+  const direct = pcode ? "https://www.cardmarket.com/de/YuGiOh/Products/Search?" + CMQ(c) + "&searchString=" + encodeURIComponent(pcode) : "";
   const ebay = `<a class="alt" href="https://www.ebay.de/sch/i.html?_nkw=${encodeURIComponent([c.number, c.name_en || c.name, "yugioh"].filter(Boolean).join(" "))}&LH_Sold=1&LH_Complete=1" target="_blank" rel="noopener">eBay verkauft ↗</a>`;
   return `<div class="links">
     <a class="cm" href="${direct || search}" target="_blank" rel="noopener">Karte auf Cardmarket öffnen (DE · ${esc(YGO_LCODE[c.language] || "EN")} · ${esc(c.cond || "NM")}) ↗</a>
-    ${direct ? `<a class="alt" href="${search}" target="_blank" rel="noopener">Falsche Seite? Suche „${esc(c.name_en)}“ ↗</a>` : ""}
+    ${direct ? `<div style="flex:1 1 100%;font-size:11.5px;color:var(--muted)">Mehrere Seltenheiten? Oben auf der Kartenseite die Version (V1, V2 …) wechseln.</div><a class="alt" href="${search}" target="_blank" rel="noopener">Falsche Seite? Suche „${esc(c.name_en || c.name)}“ ↗</a>` : ""}
     ${ebay}<button data-del="${esc(c.id)}">Entfernen</button></div>`;
 }
 // ---------- Text, Ansicht, Vorlesen ----------
