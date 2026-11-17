@@ -1170,6 +1170,16 @@ async function analyzePhoto(file, opts){
   const thumb = st ? cardThumb(st.canvas, 0, 0, st.canvas.width, st.canvas.height) : cardThumb(cv, (W - tw) / 2, (H - th) / 2, tw, th);
   const box = photoBox(thumb, "Texterkennung startet …");
   const step = t => { const m = box.querySelector("#anaStep"); if(m) m.textContent = t; };
+  // 0) Erkennung am Bild (Fingerabdruck) – schnell, braucht keine Texterkennung
+  let fpRes = null;
+  const fpSrc = st ? st.canvas : (opts && opts.quick ? cv : null);
+  if(fpSrc && typeof fpIdentify === "function"){
+    step("Erkenne die Karte am Bild …");
+    try{ await Promise.all([cardDbReady, opDbReady]); fpRes = await fpIdentify(fpSrc); }catch(e){ console.warn(e); }
+    if(fpRes && fpRes.sure && fpRes.list.length === 1){
+      box.remove(); addCard(fpRes.list[0].c, thumb); setStatus("✓ Karte am Bild erkannt."); return;
+    }
+  }
   await Promise.all([ocrReady, cardDbReady, opDbReady, ygoSoon(), typeof jpLoad === "function" ? jpLoad() : 0]);
   if(!worker){ box.remove(); setStatus("Texterkennung nicht verfügbar – bitte manuell eingeben."); return; }
   const wasPaused = paused; if(!keepCam) paused = true;
@@ -1256,9 +1266,23 @@ async function analyzePhoto(file, opts){
       const id2 = opCheckName(hit.id, all);
       if(id2 !== hit.id) hit = { ...hit, id: id2, key: "op:" + id2 };
     }
+    // Bild + Nummer: bei Nachdrucken (gleiches Motiv in mehreren Sets) entscheidet die gelesene Nummer
+    if(hit && fpRes && fpRes.d <= FP_SURE && fpRes.list.length > 1){
+      const ids = new Set(fpRes.list.map(x => identity(x.c))), m = candidates(hit).find(x => ids.has(identity(x.c)));
+      if(m){ box.remove(); paused = wasPaused; addCard(m.c, thumb); setStatus("✓ Karte am Bild und an der Nummer erkannt."); return; }
+    }
     if(hit){
       box.remove(); paused = wasPaused;
       if(await handleRead(hit, thumb, keepCam)) setStatus(hit.strong || hit.kind === "op" ? "✓ Karte aus dem Foto übernommen." : "✓ Karte nach deiner Bestätigung übernommen.");
+      return;
+    }
+    // 3b) Nummer nicht lesbar, aber am Bild erkannt -> Ausgabe auswählen
+    if(fpRes && fpRes.list.length){
+      box.remove(); paused = wasPaused;
+      const msg = fpRes.list.length > 1 ? `Am Bild erkannt: „${fpRes.list[0].label}“ – welche Ausgabe?` : `Ist es „${fpRes.list[0].label}“? (am Bild erkannt)`;
+      if(keepCam){ inlinePick(fpRes.list, thumb, msg); return; }
+      paused = true; const pick = await chooseFrom(fpRes.list, thumb, msg); paused = wasPaused;
+      if(pick){ addCard(pick.c, thumb); setStatus("✓ Karte am Bild erkannt."); }
       return;
     }
     // 4) Kein Kürzel/keine Nummer: Kartenname lesen und in der Datenbank suchen
