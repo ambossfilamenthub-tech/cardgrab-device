@@ -231,3 +231,16 @@ body.ui2 .links a.alt:active,body.ui2 .links button:active,body.ui2 [data-edit]:
 #bgFeed[hidden]{display:none}
 #bgFeed.ask{background:linear-gradient(135deg,#be185d,#6d28d9)}
 #bgFeed .spin{width:16px;height:16px;border-radius:50%;border:3px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .8s linear infinite;display:inline-block}
+
+/* Preisquelle sichtbar (Bedingung von Cardmarket) */
+.hsrc{font:600 12px system-ui,sans-serif;color:#c4b5fd;margin-top:2px;opacity:.9}
+.hsrc b{color:#a5f3fc}
+
+.prices .psrc{grid-column:1/-1;text-align:center;font:600 11px system-ui,sans-serif;color:var(--muted);margin-top:2px}
+/* offizielles Cardmarket-Logo (Datei von help.cardmarket.com/en/Downloads, unverändert) */
+.cmlogo{height:14px;width:auto;vertical-align:-3px;margin-left:2px}
+.hsrc .cmlogo{height:16px}
+body.ui2.cmlogo-ok .links a.cm::before{content:"";display:inline-block;flex:0 0 auto;width:64px;height:24px;margin-right:8px;vertical-align:middle;border-radius:7px;background:#fff url(brand/cardmarket-blue.png) center/54px auto no-repeat;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+body:not(.cmlogo-ok) .cmlogo{display:none}
+body.cmlogo-ok .cmtxt{display:none}
+.hsrc .cmtxt{color:#a5f3fc}
