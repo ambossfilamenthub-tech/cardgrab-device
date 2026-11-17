@@ -11,15 +11,19 @@ function findCardQuad(src){
   const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
   const g = cv.getContext("2d", { willReadFrequently: true });
   g.filter = "blur(1.2px)"; g.drawImage(src, 0, 0, w, h); g.filter = "none";
-  const d = g.getImageData(0, 0, w, h).data, L = new Float32Array(w * h);
-  for(let i = 0, j = 0; i < d.length; i += 4, j++) L[j] = d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
-  // Sobel
+  const d = g.getImageData(0, 0, w, h).data;
+  // Sobel je Farbkanal (R, G, B) und die stärkste Kante nehmen: ein gelber Kartenrand auf weißem Grund ist
+  // in der Helligkeit kaum zu sehen, im Blau-Kanal aber deutlich
   const M = new Float32Array(w * h); let mx = 0;
+  const C = [0, 1, 2].map(c => { const L = new Float32Array(w * h); for(let i = c, j = 0; i < d.length; i += 4, j++) L[j] = d[i]; return L; });
   for(let y = 1; y < h - 1; y++) for(let x = 1; x < w - 1; x++){
-    const i = y * w + x;
-    const gx = -L[i - w - 1] - 2 * L[i - 1] - L[i + w - 1] + L[i - w + 1] + 2 * L[i + 1] + L[i + w + 1];
-    const gy = -L[i - w - 1] - 2 * L[i - w] - L[i - w + 1] + L[i + w - 1] + 2 * L[i + w] + L[i + w + 1];
-    const m = Math.hypot(gx, gy); M[i] = m; if(m > mx) mx = m;
+    const i = y * w + x; let m = 0;
+    for(const L of C){
+      const gx = -L[i - w - 1] - 2 * L[i - 1] - L[i + w - 1] + L[i - w + 1] + 2 * L[i + 1] + L[i + w + 1];
+      const gy = -L[i - w - 1] - 2 * L[i - w] - L[i - w + 1] + L[i + w - 1] + 2 * L[i + w] + L[i + w + 1];
+      const v = gx * gx + gy * gy; if(v > m) m = v;
+    }
+    m = Math.sqrt(m); M[i] = m; if(m > mx) mx = m;
   }
   // Schwelle: obere 9 % der Kantenstärken
   const hist = new Uint32Array(256); for(let i = 0; i < M.length; i++) hist[Math.min(255, (M[i] / mx * 255) | 0)]++;
@@ -54,7 +58,7 @@ function findCardQuad(src){
     const det = Math.cos(ta) * Math.sin(tb) - Math.sin(ta) * Math.cos(tb); if(Math.abs(det) < 1e-6) return null;
     return [(a.r * Math.sin(tb) - b.r * Math.sin(ta)) / det, (b.r * Math.cos(ta) - a.r * Math.cos(tb)) / det];
   };
-  let best = null;
+  let best = null; const all = [];
   for(let i = 0; i < hor.length; i++) for(let j = i + 1; j < hor.length; j++)
   for(let a = 0; a < vert.length; a++) for(let b = a + 1; b < vert.length; b++){
     const h1 = hor[i], h2 = hor[j], v1 = vert[a], v2 = vert[b];
@@ -83,9 +87,20 @@ function findCardQuad(src){
     if(rr > 0.12) continue;
     const support = (h1.v + h2.v + v1.v + v2.v) / ((top + bot + lef + rig) || 1);
     const score = support * (1 - rr * 4) * Math.sqrt(fr);
-    if(!best || score > best.score) best = { score, P: P.map(p => [p[0] / k, p[1] / k]), landscape: ratio > 1 };
+    const cand = { score, P: P.map(p => [p[0] / k, p[1] / k]), landscape: ratio > 1 };
+    all.push(cand); if(!best || score > best.score) best = cand;
   }
-  return best && best.score > 0.25 ? best : null;
+  if(!best || best.score <= 0.25) return null;
+  // weitere deutlich andere Vierecke merken – falls das beste nur der Bildrand innerhalb der Karte war
+  const far = (a, b) => a.P.some((p, n) => Math.hypot(p[0] - b.P[n][0], p[1] - b.P[n][1]) > 0.04 * Math.max(src.width, src.height));
+  const orient = c => c.landscape ? [c.P[3], c.P[0], c.P[1], c.P[2]] : c.P;
+  best.alts = [];
+  for(const c of all.sort((a, b) => b.score - a.score)){
+    if(best.alts.length >= 3) break;
+    if(c.score > best.score * 0.3 && far(c, best) && best.alts.every(x => far(c, { P: x.raw }))) best.alts.push({ P: orient(c), raw: c.P });
+  }
+  best.alts = best.alts.map(x => x.P);
+  return best;
 }
 
 // Homographie (4 Punkte -> Rechteck) und Entzerrung mit bilinearer Abtastung
@@ -129,6 +144,15 @@ function straightenCard(src){
     const q = findCardQuad(src); if(!q) return null;
     let P = q.P;
     if(q.landscape) P = [P[3], P[0], P[1], P[2]];   // um 90° drehen
-    return { canvas: warpCard(src, P), quad: q };
+    return { canvas: warpCard(src, P), quad: q, alts: q.alts || [] };
   }catch(e){ console.warn(e); return null; }
+}
+
+// Ausschnitt im Kartenformat aus der Bildmitte (Anteil f der möglichen Größe) – Ersatz, wenn die Kanten nicht passen
+function cardCrop(src, f){
+  const W = src.width, H = src.height;
+  let ch = Math.min(H, W / CARD_RATIO) * f, cw = ch * CARD_RATIO;
+  const out = document.createElement("canvas"); out.width = 630; out.height = 880;
+  out.getContext("2d").drawImage(src, (W - cw) / 2, (H - ch) / 2, cw, ch, 0, 0, 630, 880);
+  return out;
 }

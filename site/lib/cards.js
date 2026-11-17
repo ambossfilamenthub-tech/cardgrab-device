@@ -196,7 +196,7 @@ function dbLookup(c){
   if(best.score < 0.8 && !(code && best.st.code === code)) return null;
   // Hauptset (Cardmarket führt Galerie-Karten im Hauptset)
   const grp = best.st.code ? (CDB.byCode.get(best.st.code) || [best.st]) : [best.st];
-  const main = grp.filter(st => !st.gal).sort((a, b) => b.total - a.total)[0] || best.st;
+  const main = grp.filter(st => !st.gal).sort((a, b) => b.total - a.total || (b === best.st) - (a === best.st))[0] || best.st;   // gleich groß (Celebrations / Klassische Kollektion): eigenes Set
   // Versionsnummer: gleicher englischer Name mehrfach in der Cardmarket-Erweiterung -> V1, V2 … nach Nummer
   const same = [];
   for(const st of grp){ const m = CDB.cards.get(st.id); if(m) for(const e of m.values()) if(e[2] === best.e[2]) same.push(e[0]); }
