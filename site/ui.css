@@ -224,3 +224,10 @@ body.ui2 .links a.alt:active,body.ui2 .links button:active,body.ui2 [data-edit]:
 .mini.pend .spin{position:absolute;left:50%;top:50%;margin:-14px 0 0 -14px;width:28px;height:28px;border-width:4px}
 .mini.pend.fail .spin{animation:none;border:0;font-style:normal;font-size:24px;display:grid;place-items:center}
 .mini.pend.fail{border-color:#f472b6;box-shadow:0 0 12px rgba(244,114,182,.6)}
+
+/* Fortschritt, wenn der Scanner geschlossen ist */
+#bgFeed{position:fixed;left:12px;right:12px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:72;border:0;border-radius:14px;padding:12px 14px;display:flex;align-items:center;gap:10px;justify-content:center;
+  font:800 14.5px system-ui,sans-serif;color:#fff;background:linear-gradient(135deg,#6d28d9,#0e7490);box-shadow:0 0 0 2px rgba(240,171,252,.7),0 10px 26px rgba(0,0,0,.45);cursor:pointer}
+#bgFeed[hidden]{display:none}
+#bgFeed.ask{background:linear-gradient(135deg,#be185d,#6d28d9)}
+#bgFeed .spin{width:16px;height:16px;border-radius:50%;border:3px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .8s linear infinite;display:inline-block}
