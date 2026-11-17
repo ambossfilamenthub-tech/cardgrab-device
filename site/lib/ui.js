@@ -106,7 +106,8 @@ function renderHome(){
   $("homeChg").className = "hchg " + (/^\+/.test(chg) ? "up" : /^−/.test(chg) ? "down" : "");
   $("homeBuild").hidden = coll.length > 0;
   const recent = [...list].sort((a, b) => b.t - a.t).slice(0, 12);
-  $("homeRecent").innerHTML = recent.length ? `<div class="hsub"><b>Zuletzt gescannt</b><button data-go="coll">Alle ›</button></div><div class="hrow">${recent.map(miniCard).join("")}</div>` : "";
+  const pend = typeof pendTiles === "function" ? pendTiles() : "";
+  $("homeRecent").innerHTML = recent.length || pend ? `<div class="hsub"><b>Zuletzt gescannt</b><button data-go="coll">Alle ›</button></div><div class="hrow">${pend}${recent.map(miniCard).join("")}</div>` : "";
 }
 function miniCard(c){
   const th = safeThumb(c.thumb) || (typeof c.img === "string" && /^https:\/\//.test(c.img) ? c.img : ""), v = valueOf(c);
@@ -190,7 +191,7 @@ function renderScanUi(){
   const ses = coll.filter(c => c.t >= UI.scanStart).sort((a, b) => b.t - a.t);
   const n = ses.reduce((s, c) => s + qtyOf(c), 0);
   $("scCnt").hidden = !n; $("scCnt").textContent = n;
-  const pend = PEND.map(p => `<div class="mini pend${p.fail ? " fail" : ""}" data-pend="${p.id}"><span class="mi">${p.thumb ? `<img src="${p.thumb}" alt="">` : ""}<i class="spin">${p.fail ? "❓" : ""}</i></span><small>${p.fail ? "Nicht erkannt" : "Erkenne …"}</small></div>`).join("");
+  const pend = pendTiles();
   $("scStrip").innerHTML = pend + (ses.length ? ses.slice(0, 30).map(miniCard).join("") : pend ? "" : `<div class="sempty">Karte in den Rahmen legen – sie erscheint dann hier.</div>`);
   $("scLockT").textContent = UI.lock ? `Set ${UI.lock}` : "Set fixieren"; $("scLock").classList.toggle("on", !!UI.lock);
   $("scBulkT").textContent = window.UI_SINGLE ? "Einzelbild" : "Serie an"; $("scBulk").classList.toggle("on", !window.UI_SINGLE);
@@ -204,6 +205,25 @@ function renderScanUi(){
 
 // ---------- Sofort-Rückmeldung beim Scannen ----------
 const PEND = [];
+function pendTiles(){
+  return PEND.map(p => `<div class="mini pend${p.fail ? " fail" : ""}" data-pend="${p.id}"><span class="mi">${p.thumb ? `<img src="${p.thumb}" alt="">` : ""}<i class="spin">${p.fail ? "❓" : ""}</i></span><small>${p.fail ? "Nicht erkannt" : "Erkenne …"}</small></div>`).join("");
+}
+// Scanner geschlossen, Analyse läuft weiter: unten eine Leiste mit dem Fortschritt + offene Auswahlen
+function bgUpdate(){
+  let el = $("bgFeed");
+  if(!el){ el = document.createElement("button"); el.id = "bgFeed"; document.body.appendChild(el);
+    el.onclick = () => { const ask = document.querySelectorAll("#results .card.pick").length; if(ask){ go("search"); setTimeout(() => { const f = document.querySelector("#results .card.pick"); if(f) f.scrollIntoView({ behavior: "smooth", block: "center" }); }, 150); } else go("home"); }; }
+  const n = PEND.filter(p => !p.fail).length + (typeof shotQ !== "undefined" ? 0 : 0);
+  const ask = document.querySelectorAll("#results .card.pick").length;
+  const scanning = document.body.classList.contains("scanmode");
+  const onSearch = UI.page === "search";
+  if(scanning || (!n && (!ask || onSearch))){ el.hidden = true; return; }
+  el.hidden = false;
+  el.className = n ? "busy" : "ask";
+  el.innerHTML = n ? `<i class="spin"></i> ${n === 1 ? "1 Karte wird" : n + " Karten werden"} erkannt …${ask ? ` · ❓ ${ask} zum Auswählen` : ""}`
+    : `❓ ${ask === 1 ? "1 Karte braucht" : ask + " Karten brauchen"} deine Auswahl – hier antippen`;
+}
+setInterval(bgUpdate, 700);
 function feed(html, cls, ms){
   let el = $("scanFeed"); if(!el){ el = document.createElement("div"); el.id = "scanFeed"; $("scanUi").appendChild(el); }
   el.className = cls || ""; el.innerHTML = html; el.hidden = false;
@@ -212,7 +232,7 @@ function feed(html, cls, ms){
 function scanPending(id, thumb){
   PEND.unshift({ id, thumb });
   feed(`<i class="spin"></i> Karte erfasst – wird erkannt …`, "busy");
-  if(document.body.classList.contains("scanmode")) renderScanUi();
+  if(document.body.classList.contains("scanmode")) renderScanUi(); else if(UI.page === "home") renderHome();
 }
 function scanDone(id, c){
   const p = PEND.find(x => x.id === id); if(!p) return;
@@ -224,9 +244,10 @@ function scanDone(id, c){
   } else {
     p.fail = true;
     feed(`❓ Nicht sicher erkannt – Karte etwas näher/gerader halten oder in der Liste auswählen`, "bad", 3500);
-    setTimeout(() => { const i = PEND.indexOf(p); if(i >= 0){ PEND.splice(i, 1); if(document.body.classList.contains("scanmode")) renderScanUi(); } }, 3500);
+    setTimeout(() => { const i = PEND.indexOf(p); if(i >= 0){ PEND.splice(i, 1); if(document.body.classList.contains("scanmode")) renderScanUi(); else if(UI.page === "home") renderHome(); } }, 3500);
   }
-  if(document.body.classList.contains("scanmode")) renderScanUi();
+  if(document.body.classList.contains("scanmode")) renderScanUi(); else if(UI.page === "home") renderHome();
+  if(!document.body.classList.contains("scanmode") && c && typeof toast === "function") toast(`✓ ${c.name || "Karte"} erkannt`);
 }
 
 // ---------- Eingriffe in die vorhandene Logik ----------
