@@ -1,7 +1,7 @@
 // CardGrab Device – täglicher Cardmarket-Preis-Download
 // Lädt die öffentlichen Cardmarket-Dateien (Preisliste + Produktkatalog) und baut daraus kleine Preisdateien für die App:
 //   site/prices-pokemon.json   { date, p: { idProduct: [low, trend, avg1, avg7, avg30, lowHolo, trendHolo, avg30Holo] } }
-//   site/prices-onepiece.json  { date, c: { "OP05-119": [[idProduct, low, trend, avg7, avg30, geschätzt, Set, Erweiterung], ...] } }
+//   site/prices-onepiece.json  { date, c: { "OP05-119": [[idProduct, low, trend, avg7, avg30, geschätzt, Set, Erweiterung, Bildpfad "1621/OP16"], ...] } }
 // Läuft in GitHub Actions (siehe .github/workflows/prices.yml), ohne Zusatzpakete (Node 20+).
 import fs from "node:fs";
 import path from "node:path";
@@ -78,6 +78,35 @@ async function pokemon(){
   console.log(`  Pokémon: ${rows.length} Preise geladen, ${hit} passen zu Karten der Datenbank (${wanted.size} bekannt)`);
 }
 
+// ---------------- Cardmarket-Bildpfade (One Piece) ----------------
+const CM_IMG = (cat, code, id) => `https://product-images.s3.cardmarket.com/${cat}/${code}/${id}/${id}.jpg`;
+async function headOk(u){
+  try{ const r = await fetch(u, { method: "HEAD", headers: { "User-Agent": "CardGrab-Device/1.0 (image check)" } }); return r.ok; }catch{ return false; }
+}
+async function cmExpCodes(products, map, expPack, op){
+  const f = path.join(ROOT, "data", "cm-exp-codes.json");
+  let known = {}; try{ known = JSON.parse(fs.readFileSync(f, "utf8")); }catch{}
+  const allPacks = [...new Set(Object.values(op.c).flatMap(e => [e[11], ...(e[12] || []).map(v => v[1])]).filter(Boolean))].sort();
+  const sample = new Map();   // Erweiterung -> [Produkt-IDs (zugeordnet zuerst)]
+  for(const p of products){ if(p.exp == null) continue; const l = sample.get(p.exp) || []; if(l.length < 3 && map.has(p.id)) l.push(p); sample.set(p.exp, l); }
+  const t0 = Date.now(); let probes = 0, found = 0;
+  for(const [exp, ps] of sample){
+    if(known[exp] !== undefined && (known[exp] || (known["_t" + exp] || 0) > Date.now() - 7 * 864e5)) continue;   // nicht gefundene nur 1×/Woche neu prüfen
+    if(!ps.length || Date.now() - t0 > 4 * 60000) continue;
+    const p = ps[0], pk = expPack.get(exp) || (map.get(p.id) || "").split("-")[0];
+    const cand = [...new Set([pk, pk + "-JP", ...allPacks.flatMap(x => [x, x + "-JP"]), "P", "P-JP", "Promos", "Promos-JP"].filter(Boolean))];
+    let hit = "";
+    for(const code of cand){ probes++; if(await headOk(CM_IMG(p.cat || 1621, code, p.id))){ hit = code; break; } }
+    known[exp] = hit; if(!hit) known["_t" + exp] = Date.now(); else found++;
+  }
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.writeFileSync(f, JSON.stringify(known));
+  const cat = products.find(p => p.cat)?.cat || 1621;
+  console.log(`  One Piece: Bildpfade – ${found} neue Erweiterungs-Kürzel gefunden (${probes} Prüfungen), Kategorie ${cat}`);
+  const out = {}; for(const [k, v] of Object.entries(known)) if(!k.startsWith("_") && v) out[k] = `${cat}/${v}`;
+  return out;
+}
+
 // ---------------- One Piece ----------------
 // Cardmarket führt im Katalog keine Karten-ID (z. B. OP05-119). Zuordnung:
 //  1) Karten-ID steht im Produktnamen  -> direkt
@@ -95,7 +124,7 @@ async function onepiece(){
     if(id) prices.set(id, [num(row, "low"), num(row, "trend"), num(row, "avg7"), num(row, "avg30")].map(r2));
   }
   const products = list(pl, "products", "productList").map(x => ({
-    id: Number(x.idProduct ?? x.id), name: x.name || x.enName || "", exp: x.idExpansion ?? x.expansionId ?? null, meta: x.idMetacard ?? null
+    id: Number(x.idProduct ?? x.id), name: x.name || x.enName || "", exp: x.idExpansion ?? x.expansionId ?? null, meta: x.idMetacard ?? null, cat: x.idCategory ?? null
   })).filter(x => x.id);
 
   const op = JSON.parse(fs.readFileSync(path.join(SITE, "opdb.json"), "utf8"));
@@ -160,10 +189,13 @@ async function onepiece(){
     const s = metaCode.get(p.meta); if(s && s.size === 1) map.set(p.id, [...s][0]);
   }
   const prodExp = new Map(products.map(p => [p.id, p.exp]));
+  // Cardmarket-Kürzel je Erweiterung (z. B. „OP16“, „OP16-JP“) – steht im Pfad der Produktbilder.
+  // Wird einmal pro Erweiterung über eine HEAD-Anfrage ermittelt und in data/cm-exp-codes.json gemerkt.
+  const expCode = await cmExpCodes(products, map, expPack, op);
   const c = {};
   for(const [id, code] of [...map.entries()].sort((a, b) => a[0] - b[0])){
-    const pr = prices.get(id) || [0, 0, 0, 0];
-    (c[code] = c[code] || []).push([id, ...pr, guessed.has(id) ? 1 : 0, expPack.get(prodExp.get(id)) || "", prodExp.get(id) ?? ""]);
+    const pr = prices.get(id) || [0, 0, 0, 0], ex = prodExp.get(id);
+    (c[code] = c[code] || []).push([id, ...pr, guessed.has(id) ? 1 : 0, expPack.get(ex) || "", ex ?? "", (ex != null && expCode[ex]) || ""]);
   }
   writeJson("prices-onepiece.json", { date: (pg.createdAt || today()).slice(0, 10), n: map.size, c });
   console.log(`  One Piece: ${products.length} Produkte, ${map.size} einer Karten-ID zugeordnet (${Object.keys(c).length} IDs), ${expPack.size}/${byExp.size} Erweiterungen erkannt`);
