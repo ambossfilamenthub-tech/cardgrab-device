@@ -210,3 +210,17 @@ body.ui2 .links a.alt:active,body.ui2 .links button:active,body.ui2 [data-edit]:
 #camHelp b{font:800 18px system-ui,sans-serif}
 #camHelp p{font:500 14.5px/1.4 system-ui,sans-serif;color:#ddd6fe;margin:8px 0 14px}
 #camHelp div{display:flex;gap:10px;flex-wrap:wrap}
+
+/* Sofort-Rückmeldung beim Scannen */
+@keyframes spin{to{transform:rotate(1turn)}}
+#scanFeed{position:fixed;left:50%;transform:translateX(-50%);top:calc(56px + env(safe-area-inset-top));z-index:74;max-width:calc(100% - 32px);padding:10px 16px;border-radius:14px;font:700 15px system-ui,sans-serif;color:#fff;display:flex;align-items:center;gap:8px;
+  background:linear-gradient(135deg,#6d28d9,#0e7490);box-shadow:0 0 0 2px rgba(240,171,252,.7),0 10px 26px rgba(0,0,0,.45)}
+#scanFeed[hidden]{display:none}
+#scanFeed.ok{background:linear-gradient(135deg,#059669,#0e7490)}
+#scanFeed.bad{background:linear-gradient(135deg,#be185d,#6d28d9);font-size:13.5px}
+#scanFeed .spin,.mini.pend .spin{width:16px;height:16px;border-radius:50%;border:3px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .8s linear infinite;display:inline-block;flex:0 0 auto}
+.mini.pend{border-color:#22d3ee;box-shadow:0 0 12px rgba(34,211,238,.6)}
+.mini.pend .mi img{filter:brightness(.6)}
+.mini.pend .spin{position:absolute;left:50%;top:50%;margin:-14px 0 0 -14px;width:28px;height:28px;border-width:4px}
+.mini.pend.fail .spin{animation:none;border:0;font-style:normal;font-size:24px;display:grid;place-items:center}
+.mini.pend.fail{border-color:#f472b6;box-shadow:0 0 12px rgba(244,114,182,.6)}

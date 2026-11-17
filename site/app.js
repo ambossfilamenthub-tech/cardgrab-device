@@ -1115,20 +1115,20 @@ async function loop(){
       peak = Math.max(sharp, peak * 0.92);
       // Live-Kartenerkennung (alle ~350 ms): Rahmen um die echte Karte zeichnen
       if(typeof findCardQuad === "function" && Date.now() - LIVE.at > 350){ LIVE.at = Date.now(); liveDetect(v, X, Y, Wd, Hd); }
-      const present = contrast > 18 || LIVE.ok;
+      // Foto NUR, wenn wirklich eine Karte (Kartenumriss) im Bild ist – nicht bei Tisch/Hintergrund
+      const card = LIVE.ok, cardRecent = LIVE.seen && Date.now() - LIVE.seen < 700;
+      if(!cardRecent && contrast > 18) NOCARD.t = NOCARD.t || Date.now(); else NOCARD.t = 0;
       if(!armed){
-        // nach einem Foto: erst wieder auslösen, wenn eine andere Karte im Rahmen liegt
-        // neue Karte = Bild im Rahmen unterscheidet sich deutlich vom letzten Foto (oder Rahmen leer)
+        // nach einem Foto: erst wieder auslösen, wenn die Karte weg ist oder eine deutlich andere Karte daliegt
         let diff = 0; if(shotSig){ for(let i = 0; i < g.length; i++) diff += Math.abs(g[i] - shotSig[i]); diff /= g.length; }
-        if(Date.now() - lastShotAt > 600 && (!present || diff > 12)){ armed = true; steady = 0; }
-        $("readOut").textContent = "✓ Foto gemacht – nächste Karte" + queueInfo();
+        if(Date.now() - lastShotAt > 700 && (!cardRecent || (card && diff > 22))){ armed = true; steady = 0; }
+        $("readOut").textContent = "✓ Erfasst – nächste Karte hinlegen" + queueInfo();
       } else {
-        // locker: leichte Handbewegung ist ok, Bild muss nur halbwegs scharf sein
-        // mit gefundener, ruhiger Karte darf etwas großzügiger ausgelöst werden
-        const good = present && motion < (LIVE.stable ? 18 : 14) && sharp > (LIVE.stable ? 10 : 14) && sharp >= peak * 0.6;
+        const good = card && LIVE.stable && motion < 18 && sharp > 10 && sharp >= peak * 0.6;
         steady = good ? steady + 1 : 0;
         $("frame").classList.toggle("focus", steady > 0);
-        $("readOut").textContent = (LIVE.ok && !LIVE.stable && steady ? "Karte erkannt – ruhig halten …" : !present ? "Karte in den Rahmen halten" : motion >= 14 ? "Etwas ruhiger halten …" : sharp <= 14 ? "Wird scharf gestellt …" : steady ? "Scharf ✓ – Foto!" : "Fokussiere …") + queueInfo();
+        $("readOut").textContent = (!card ? (NOCARD.t && Date.now() - NOCARD.t > 4000 ? "Keine Karte erkannt – Auslöser antippen" : "Karte in den Rahmen halten")
+          : !LIVE.stable ? "Karte erkannt – ruhig halten …" : sharp <= 10 ? "Wird scharf gestellt …" : steady ? "Scharf ✓ – Foto!" : "Fokussiere …") + queueInfo();
         if(steady >= 2 && !window.UI_SINGLE){ shotSig = g; await autoShot(v, X, Y, Wd, Hd, sharp); }
       }
     }catch(e){ console.warn(e); }
@@ -1143,11 +1143,28 @@ function manualShot(){
   return autoShot(v, (f.x + ox) / s, (f.y + oy) / s, f.w / s, f.h / s, 99);
 }
 // Warteschlange: Kamera fotografiert weiter, Analyse läuft nacheinander im Hintergrund
-const shotQ = []; let qRunning = false;
+const shotQ = []; let qRunning = false; const NOCARD = { t: 0 };
+let SHOT_N = 0;
+const smallThumb = cv => { try{ const c = document.createElement("canvas"), k = 150 / Math.max(cv.width, cv.height); c.width = Math.round(cv.width * k); c.height = Math.round(cv.height * k); c.getContext("2d").drawImage(cv, 0, 0, c.width, c.height); return c.toDataURL("image/jpeg", 0.7); }catch{ return ""; } };
+// sofort zeigen, dass ein Foto gemacht wurde (Kachel „erkenne …“), danach Ergebnis
+function queueShot(cv, opts){
+  const pid = ++SHOT_N;
+  shotQ.push({ cv, opts, pid });
+  if(typeof scanPending === "function") scanPending(pid, smallThumb(cv));
+  runQueue();
+}
 function queueInfo(){ const n = shotQ.length + (qRunning ? 1 : 0); return n ? ` · ${n} in Analyse` : ""; }
 async function runQueue(){
   if(qRunning) return; qRunning = true;
-  try{ while(shotQ.length){ const it = shotQ.shift(), cv = it.cv || it; try{ await analyzePhoto(cv, it.opts || { keepCam: true, quick: true }); }catch(e){ console.warn(e); } } }
+  try{ while(shotQ.length){
+    const it = shotQ.shift(), cv = it.cv || it;
+    const before = coll.reduce((s, c) => s + qtyOf(c), 0), t0 = Date.now();
+    try{ await analyzePhoto(cv, it.opts || { keepCam: true, quick: true }); }catch(e){ console.warn(e); }
+    if(it.pid && typeof scanDone === "function"){
+      const added = coll.reduce((s, c) => s + qtyOf(c), 0) > before;
+      scanDone(it.pid, added ? [...coll].filter(c => c.t >= t0).sort((a, b) => b.t - a.t)[0] || [...coll].sort((a, b) => b.t - a.t)[0] : null);
+    }
+  } }
   finally{ qRunning = false; if(typeof batchDone === "function") batchDone(); }
 }
 async function autoShot(v, X, Y, Wd, Hd, sharp){
@@ -1162,8 +1179,8 @@ async function autoShot(v, X, Y, Wd, Hd, sharp){
       full.getContext("2d").drawImage(v, 0, 0);
       const card = warpCard(full, LIVE.quad, 1000);
       setTimeout(() => $("frame").classList.remove("hit"), 600);
-      shotQ.push(card); busy = false; lastShotAt = Date.now(); clearLive();
-      runQueue(); return;
+      busy = false; lastShotAt = Date.now(); clearLive();
+      queueShot(card); return;
     }catch(e){ console.warn(e); }
   }
   // Kartenbereich mit etwas Rand in voller Videoauflösung ausschneiden
@@ -1172,8 +1189,8 @@ async function autoShot(v, X, Y, Wd, Hd, sharp){
   const cv = document.createElement("canvas"); cv.width = Math.round(x1 - x0); cv.height = Math.round(y1 - y0);
   cv.getContext("2d").drawImage(v, x0, y0, x1 - x0, y1 - y0, 0, 0, cv.width, cv.height);
   setTimeout(() => $("frame").classList.remove("hit"), 600);
-  shotQ.push(cv); busy = false; lastShotAt = Date.now();
-  runQueue();
+  busy = false; lastShotAt = Date.now();
+  queueShot(cv);
 }
 function cardThumb(src, x, y, w, h){
   const c = document.createElement("canvas"); c.width = 120; c.height = Math.round(120 * 88 / 63);
