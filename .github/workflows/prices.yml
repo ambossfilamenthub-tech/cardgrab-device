@@ -51,6 +51,15 @@ jobs:
         continue-on-error: true
         run: node scripts/build-ygo.mjs
 
+      - name: Bild-Fingerabdrücke für die Sofort-Erkennung bauen (nur Zahlen, keine Bilder)
+        continue-on-error: true
+        timeout-minutes: 28
+        env:
+          FP_MINUTES: "20"
+        run: |
+          npm i --no-save --no-audit --no-fund sharp
+          node scripts/build-fp.mjs
+
       - name: Selbst gespeicherte Kartenbilder entfernen (Bilder werden nur verlinkt)
         run: |
           git config user.name "cardgrab-bot"
@@ -78,7 +87,7 @@ jobs:
         run: |
           git config user.name "cardgrab-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add site/prices-*.json data/tr-de.json
+          git add site/prices-*.json data/tr-de.json site/fp-*.json data/fp-report.json 2>/dev/null || git add site/prices-*.json data/tr-de.json
           git diff --cached --quiet || git commit -q -m "Preise $(date -u +%F)"
           git push || true
 
