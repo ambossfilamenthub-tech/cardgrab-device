@@ -1277,7 +1277,7 @@ async function analyzePhoto(file, opts){
       return;
     }
     // 3b) Nummer nicht lesbar, aber am Bild erkannt -> Ausgabe auswählen
-    if(fpRes && fpRes.list.length){
+    if(fpRes && fpRes.ok && fpRes.list.length){
       box.remove(); paused = wasPaused;
       const msg = fpRes.list.length > 1 ? `Am Bild erkannt: „${fpRes.list[0].label}“ – welche Ausgabe?` : `Ist es „${fpRes.list[0].label}“? (am Bild erkannt)`;
       if(keepCam){ inlinePick(fpRes.list, thumb, msg); return; }
