@@ -95,6 +95,15 @@ function ygoAttachPrice(c){
   else { const e = ygoCard(c.ygo.pc); c.price = e && e[11] ? { low: e[11], est: true } : null; }
   return c;
 }
+// Bild je Version: gleiche Seltenheit im Set -> deren Passcode (Alt-Art-Motive haben eigene Passcodes)
+function ygoVerPc(c, i){
+  const v = c.versions && c.versions[Math.min(i || 0, c.versions.length - 1)];
+  if(!v || !YGO || !YGO.p) return c.ygo.pc;
+  const l = [...new Set((YGO.p[c.ygo.key] || []).filter(x => x[2] && x[2] === v.pack).map(x => +x[0]))];
+  if(!l.length) return c.ygo.pc;
+  const r = c.versions.slice(0, c.versions.indexOf(v)).filter(x => x.pack === v.pack).length;
+  return l[r % l.length];
+}
 // ---------- Cardmarket ----------
 function ygoLinks(c){
   const v = c.versions && c.versions[Math.min(c.vi || 0, c.versions.length - 1)];
