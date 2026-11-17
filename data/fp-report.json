@@ -4,39 +4,39 @@
   "total": 5112,
   "have": 4499,
   "test": {
-   "n": 150,
-   "top1": 150,
-   "top5": 150,
-   "dTrueMed": 14,
-   "dTrueMax": 22,
-   "dOtherMed": 32,
-   "dOtherMin": 26
+   "n": 0,
+   "top1": 0,
+   "top5": 0,
+   "dTrueMed": null,
+   "dTrueMax": 0,
+   "dOtherMed": null,
+   "dOtherMin": null
   }
  },
  "pokemon": {
   "total": 19810,
   "have": 19800,
   "test": {
-   "n": 150,
-   "top1": 141,
-   "top5": 150,
-   "dTrueMed": 16,
-   "dTrueMax": 28,
-   "dOtherMed": 30,
-   "dOtherMin": 8
+   "n": 0,
+   "top1": 0,
+   "top5": 0,
+   "dTrueMed": null,
+   "dTrueMax": 0,
+   "dOtherMed": null,
+   "dOtherMin": null
   }
  },
  "yugioh": {
   "total": 14855,
   "have": 14855,
   "test": {
-   "n": 150,
-   "top1": 150,
-   "top5": 150,
-   "dTrueMed": 16,
-   "dTrueMax": 28,
-   "dOtherMed": 32,
-   "dOtherMin": 22
+   "n": 0,
+   "top1": 0,
+   "top5": 0,
+   "dTrueMed": null,
+   "dTrueMax": 0,
+   "dOtherMed": null,
+   "dOtherMin": null
   }
  }
 }
