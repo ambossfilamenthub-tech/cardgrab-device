@@ -31,6 +31,7 @@ const gameOf = c => c.game || (c.ygo ? "yugioh" : c.op ? "onepiece" : "pokemon")
       <label for="galleryInput"><i>🖼️</i>Galerie</label>
       <button id="homeBinder"><i>📒</i>Ordnerseite</button>
       <button id="homeCenter"><i>📐</i>Zentrierung</button>
+      <button id="homeGames"><i>🎴</i>Meine Spiele</button>
     </div>`;
   wrap.insertBefore(home, $("scan"));
   // Leiste unten
@@ -82,6 +83,7 @@ document.addEventListener("click", e => {
 });
 $("homeBinder").onclick = () => $("binderBtn").click();
 $("homeCenter").onclick = () => $("centerBtn").click();
+$("homeGames").onclick = async () => { await chooseGames(); renderHome(); };
 
 // ---------- Startseite ----------
 function renderHome(){
@@ -156,10 +158,12 @@ $("scLock").onclick = () => {
 };
 $("scSet").onclick = async () => {
   const v = await pickFrom("Scan-Einstellungen", [
+    { v: "games", label: "🎴 Meine Spiele", sub: myGames().map(g => (ALL_GAMES.find(x => x[0] === g) || [, g])[1]).join(", ") },
     { v: "lang", label: "🌍 Sprache der Karten", sub: LANG },
     { v: "cond", label: "🏷️ Zustand für neue Karten", sub: UI.def },
     { v: "zoom", label: "🔍 Zoom", sub: $("zoomWrap").hidden ? "nicht verfügbar" : $("zoomVal").textContent }
   ]);
+  if(v === "games") await chooseGames();
   if(v === "lang"){ const l = await pickFrom("Sprache", [["Deutsch", "DE"], ["Englisch", "EN"], ["Japanisch", "JP"]].map(([k, s]) => ({ v: k, label: `${s} · ${k}`, right: k === LANG ? "✓" : "" }))); if(l){ const b = document.querySelector(`#langChips [data-lang="${l}"]`); if(b) b.click(); } }
   if(v === "cond"){ const c = await pickFrom("Zustand für neue Karten", CONDS.map(([k, n]) => ({ v: k, label: `${k} · ${n}`, right: k === UI.def ? "✓" : "" }))); if(c){ UI.def = c; uiSave(); } }
   if(v === "zoom" && !$("zoomWrap").hidden){ $("zoomWrap").classList.toggle("show"); }
@@ -176,7 +180,8 @@ function renderScanUi(){
   const snd = $("soundToggle"), on = !snd || snd.classList.contains("on");
   $("scSoundT").textContent = on ? "Ton an" : "Ton aus"; $("scSound").classList.toggle("on", on);
   const short = { Deutsch: "DE", Englisch: "EN", Japanisch: "JP" }[LANG] || LANG;
-  $("scSet").innerHTML = `<i>🎴</i><span><b>Alle Spiele</b><small>${esc(UI.def)} · ${short}${UI.lock ? ` · 🔒 ${esc(UI.lock)}` : ""}</small></span><em>⚙</em>`;
+  const gl = myGames(), gtxt = gl.length === ALL_GAMES.length ? "Alle Spiele" : gl.map(g => (ALL_GAMES.find(x => x[0] === g) || [, g])[1]).join(" · ");
+  $("scSet").innerHTML = `<i>🎴</i><span><b>${esc(gtxt)}</b><small>${esc(UI.def)} · ${short}${UI.lock ? ` · 🔒 ${esc(UI.lock)}` : ""}</small></span><em>⚙</em>`;
 }
 
 // ---------- Eingriffe in die vorhandene Logik ----------
@@ -206,6 +211,8 @@ document.addEventListener("click", e => { if(e.target.closest("#soundToggle") &&
 
 // kaputte Bilder in den kleinen Karten ausblenden (ohne Inline-Handler wegen CSP)
 document.addEventListener("error", e => { const t = e.target; if(t && t.tagName === "IMG" && t.closest(".mini")) t.classList.add("bad"); }, true);
+// beim allerersten Start: Spiele auswählen
+setTimeout(() => { try{ if(!navigator.webdriver && !localStorage.getItem("cgd-games") && !localStorage.getItem("cgd-games-asked")){ localStorage.setItem("cgd-games-asked", "1"); chooseGames(); } }catch{} }, 1200);
 // Start: Startseite zeigen, sobald die Sammlung geladen ist
 go("home");
 setTimeout(renderHome, 400); setTimeout(renderHome, 1500);
