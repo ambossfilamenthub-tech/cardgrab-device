@@ -31,7 +31,12 @@ function fpCard(game, key, lang){
   lang = lang || LANG;
   try{
     if(game === "pokemon"){
-      const [sid, lid] = key.split(":"); const st = CDB && CDB.sets.get(sid), e = CDB && CDB.cards.get(sid) && CDB.cards.get(sid).get(String(lid).toUpperCase());
+      const [sid, lid] = key.split(":");
+      if(sid.startsWith("jp/")){   // japanische Karte
+        const c = typeof jpMake === "function" ? jpMake(sid.slice(3), lid) : null; if(!c) return null;
+        return { c, label: c.name, sub: `${c.name_jp} · ${sid.slice(3)} ${lid} · japanisch` };
+      }
+      const st = CDB && CDB.sets.get(sid), e = CDB && CDB.cards.get(sid) && CDB.cards.get(sid).get(String(lid).toUpperCase());
       if(!st || !e) return null;
       const x = applyDb({ set_code: st.code || "", set: st.en, set_en: st.en, name: e[2], name_en: e[2], number: `${lid}/${st.total || ""}`, language: lang });
       if(!x.db) return null; const c = finishPk(x, lang);
@@ -71,6 +76,7 @@ async function fpIdentify(src){
   const gap = other ? other.d - best.d : 99;
   const sure = (best.d <= 24 && gap >= FP_GAP) || (best.d <= FP_SURE && gap >= 12);
   const ok = best.d <= FP_ASK && gap >= 6;   // gut genug, um eine Auswahl anzubieten
+  if(group.some(g => g.key.startsWith("jp/")) && typeof jpLoad === "function") await jpLoad();
   const lang = LANG, list = [], seen = new Set();
   let ygoPc = 0;
   for(const g of group){

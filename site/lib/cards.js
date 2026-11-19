@@ -181,7 +181,7 @@ function dbLookup(c){
   const total = parseInt(String(right || "").replace(/^[A-Z]+/, ""), 10);
   const variants = lidVariants(left);
   const hitsIn = sets => { const h = []; for(const st of sets){ const m = CDB.cards.get(st.id); if(!m) continue; for(const v of variants){ const e = m.get(v); if(e){ h.push({ st, e }); break; } } } return h; };
-  let hits = code ? hitsIn(CDB.byCode.get(code) || []) : [];
+  let hits = c.set_id && CDB.sets.get(c.set_id) ? hitsIn([CDB.sets.get(c.set_id)]) : code ? hitsIn(CDB.byCode.get(code) || []) : [];
   if(!hits.length){
     const strip = t => nrm(String(t || "").replace(/trainer[- ]?gal(l)?er(ie|y)|galar(ian)?[- ]?gal(l)?er(ie|y)|glitzer[- ]?tresor|shiny vault/ig, ""));
     const names = [c.set, c.set_en, c.cm_expansion].map(strip).filter(Boolean);
@@ -193,7 +193,7 @@ function dbLookup(c){
   hits.forEach(h => h.score = nameScore(h.e, c) + (isFinite(total) && h.st.total === total ? 0.3 : 0) + (code && h.st.code === code ? 0.5 : 0));
   hits.sort((a, b) => b.score - a.score);
   const best = hits[0];
-  if(best.score < 0.8 && !(code && best.st.code === code)) return null;
+  if(best.score < 0.8 && !(code && best.st.code === code) && !(c.set_id && best.st.id === c.set_id)) return null;
   // Hauptset (Cardmarket führt Galerie-Karten im Hauptset)
   const grp = best.st.code ? (CDB.byCode.get(best.st.code) || [best.st]) : [best.st];
   const main = grp.filter(st => !st.gal).sort((a, b) => b.total - a.total || (b === best.st) - (a === best.st))[0] || best.st;   // gleich groß (Celebrations / Klassische Kollektion): eigenes Set

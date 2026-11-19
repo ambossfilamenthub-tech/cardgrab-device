@@ -14,33 +14,40 @@ function findCardQuad(src){
   const d = g.getImageData(0, 0, w, h).data;
   // Sobel je Farbkanal (R, G, B) und die stärkste Kante nehmen: ein gelber Kartenrand auf weißem Grund ist
   // in der Helligkeit kaum zu sehen, im Blau-Kanal aber deutlich
-  const M = new Float32Array(w * h); let mx = 0;
+  const M = new Float32Array(w * h), AB = new Int16Array(w * h); let mx = 0;
   const C = [0, 1, 2].map(c => { const L = new Float32Array(w * h); for(let i = c, j = 0; i < d.length; i += 4, j++) L[j] = d[i]; return L; });
   for(let y = 1; y < h - 1; y++) for(let x = 1; x < w - 1; x++){
-    const i = y * w + x; let m = 0;
+    const i = y * w + x; let m = 0, bx = 0, by = 0;
     for(const L of C){
       const gx = -L[i - w - 1] - 2 * L[i - 1] - L[i + w - 1] + L[i - w + 1] + 2 * L[i + 1] + L[i + w + 1];
       const gy = -L[i - w - 1] - 2 * L[i - w] - L[i - w + 1] + L[i + w - 1] + 2 * L[i + w] + L[i + w + 1];
-      const v = gx * gx + gy * gy; if(v > m) m = v;
+      const v = gx * gx + gy * gy; if(v > m){ m = v; bx = gx; by = gy; }
     }
     m = Math.sqrt(m); M[i] = m; if(m > mx) mx = m;
+    // Richtung der Kante (Normale der Linie) in 1°-Schritten 0…179 – jedes Kantenpixel stimmt nur für passende Winkel
+    let a = Math.round(Math.atan2(by, bx) * 180 / Math.PI); if(a < 0) a += 180; if(a >= 180) a -= 180; AB[i] = a;
   }
-  // Schwelle: obere 9 % der Kantenstärken
+  // Schwelle: obere 20 % der Kantenstärken (die Richtungs-Hough verträgt mehr Rauschen)
   const hist = new Uint32Array(256); for(let i = 0; i < M.length; i++) hist[Math.min(255, (M[i] / mx * 255) | 0)]++;
-  let acc = 0, th = 255; const target = M.length * 0.09; for(let b = 255; b > 0; b--){ acc += hist[b]; if(acc >= target){ th = b; break; } }
+  let acc = 0, th = 255; const target = M.length * 0.2; for(let b = 255; b > 0; b--){ acc += hist[b]; if(acc >= target){ th = b; break; } }
   const thr = Math.max(th, 20) / 255 * mx;
   // Hough
   const NT = 180, diag = Math.ceil(Math.hypot(w, h)), NR = diag * 2 + 1;
   const cs = new Float32Array(NT), sn = new Float32Array(NT); for(let t = 0; t < NT; t++){ cs[t] = Math.cos(t * Math.PI / NT); sn[t] = Math.sin(t * Math.PI / NT); }
   const H = new Uint32Array(NT * NR);
+  // Hough nur in Kantenrichtung (±7°): Teppich, Holzmaserung und Bildmotiv erzeugen so kaum falsche Geraden
   for(let y = 1; y < h - 1; y++) for(let x = 1; x < w - 1; x++){
-    if(M[y * w + x] < thr) continue;
-    for(let t = 0; t < NT; t++){ const r = Math.round(x * cs[t] + y * sn[t]) + diag; H[t * NR + r]++; }
+    const i = y * w + x; if(M[i] < thr) continue;
+    const a0 = AB[i];
+    for(let dt = -7; dt <= 7; dt++){
+      let t = a0 + dt; if(t < 0) t += NT; else if(t >= NT) t -= NT;
+      H[t * NR + Math.round(x * cs[t] + y * sn[t]) + diag]++;
+    }
   }
   // Spitzen mit Unterdrückung der Nachbarn
   const lines = [];
   const used = new Uint8Array(NT * NR);
-  for(let n = 0; n < 24; n++){
+  for(let n = 0; n < 40; n++){
     let best = 0, bi = -1;
     for(let i = 0; i < H.length; i++) if(!used[i] && H[i] > best){ best = H[i]; bi = i; }
     if(bi < 0 || best < Math.min(w, h) * 0.18) break;
@@ -91,6 +98,21 @@ function findCardQuad(src){
     all.push(cand); if(!best || score > best.score) best = cand;
   }
   if(!best || best.score <= 0.25) return null;
+  // Oft wird nur der innere Rahmen (Bildfenster/Textfeld) gefunden statt des äußeren Kartenrands – dann fehlt unten
+  // die Nummer. Gibt es ein etwas größeres Viereck, das das beste umschließt, ist das der echte Kartenrand.
+  const inside = (pt, Q) => { let sg = 0; for(let n = 0; n < 4; n++){ const a = Q[n], b = Q[(n + 1) % 4]; const c = (b[0] - a[0]) * (pt[1] - a[1]) - (b[1] - a[1]) * (pt[0] - a[0]); if(Math.abs(c) < 1e-9) continue; const s0 = Math.sign(c); if(sg && s0 !== sg) return false; sg = s0; } return true; };
+  const areaOf = Q => { let A = 0; for(let n = 0; n < 4; n++){ const p1 = Q[n], p2 = Q[(n + 1) % 4]; A += p1[0] * p2[1] - p2[0] * p1[1]; } return Math.abs(A) / 2; };
+  for(let round = 0; round < 3; round++){
+    const a0 = areaOf(best.P); let outer = null;
+    for(const c of all){
+      const r = areaOf(c.P) / a0;
+      if(r < 1.04 || r > 1.7 || c.score < best.score * 0.3) continue;
+      if(!best.P.every(pt => inside(pt, c.P))) continue;
+      if(!outer || c.score > outer.score) outer = c;
+    }
+    if(!outer) break;
+    best = Object.assign({}, outer, { inner: best.P });
+  }
   // weitere deutlich andere Vierecke merken – falls das beste nur der Bildrand innerhalb der Karte war
   const far = (a, b) => a.P.some((p, n) => Math.hypot(p[0] - b.P[n][0], p[1] - b.P[n][1]) > 0.04 * Math.max(src.width, src.height));
   const orient = c => c.landscape ? [c.P[3], c.P[0], c.P[1], c.P[2]] : c.P;
@@ -143,7 +165,13 @@ function straightenCard(src){
   try{
     const q = findCardQuad(src); if(!q) return null;
     let P = q.P;
-    if(q.landscape) P = [P[3], P[0], P[1], P[2]];   // um 90° drehen
+    if(q.landscape){
+      // quer liegende Karte: welche Seite oben ist, weiß man nicht -> beide Drehungen anbieten
+      const P2 = [P[1], P[2], P[3], P[0]];
+      P = [P[3], P[0], P[1], P[2]];
+      const flip = warpCard(src, P2);
+      return { canvas: warpCard(src, P), flip, quad: q, alts: q.alts || [] };
+    }
     return { canvas: warpCard(src, P), quad: q, alts: q.alts || [] };
   }catch(e){ console.warn(e); return null; }
 }
