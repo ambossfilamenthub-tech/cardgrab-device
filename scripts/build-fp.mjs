@@ -40,7 +40,8 @@ async function run(game, jobs){
   async function worker(){
     while(i < todo.length && timeLeft()){
       const j = todo[i++];
-      const buf = await get(j.url);
+      let buf = null;
+      for(const u of j.urls || [j.url]){ buf = await get(u, j.urls ? 1 : 3); if(buf) break; }
       if(!buf){ fail++; continue; }
       try{
         const { px, w, h } = await rgba(buf);
@@ -67,6 +68,31 @@ async function pokemonJobs(){
     if(!set || !set.cards) continue;
     for(const c of set.cards) if(c.image) jobs.push({ key: `${sid}:${c.localId}`, url: c.image + "/low.webp" });
   }
+  // Karten ohne TCGdex-Bild (z. B. neue Promos „SWSH282“, Trainer-Galerie, Glitzer-Tresor): Bild von pokemontcg.io versuchen
+  const have = new Set(jobs.map(j => j.key));
+  const ptcgSets = sid => {
+    const a = sid.replace(/^(sv|me)0(\d)/, "$1$2");
+    return [...new Set([a, a.replace(/\.5/g, "pt5"), a.replace(/\.5/g, "5"), a.replace(/\./g, "")])];
+  };
+  const ptcgNums = lid => { const m = String(lid).match(/^([A-Z]*)0*(\d+)([A-Z]?)$/i); return [...new Set([String(lid), m ? m[1] + m[2] + m[3] : String(lid)])]; };
+  let extra = 0;
+  for(const [sid, cards] of Object.entries(db.c)) for(const e of cards){
+    const key = `${sid}:${e[0]}`; if(have.has(key)) continue;
+    const urls = []; for(const s of ptcgSets(sid)) for(const n of ptcgNums(e[0])) urls.push(`https://images.pokemontcg.io/${s}/${encodeURIComponent(n)}.png`);
+    jobs.push({ key, urls }); extra++;
+  }
+  console.log(`  pokemon: ${extra} Karten ohne TCGdex-Bild -> pokemontcg.io`);
+  // japanische Karten (jpdb.json, TCGdex data-asia) – Schlüssel „jp/<Set>:<Nr>“
+  try{
+    const jp = JSON.parse(fs.readFileSync(path.join(SITE, "jpdb.json"), "utf8"));
+    let n = 0;
+    for(const s of jp.s){
+      const b = await get(`https://api.tcgdex.net/v2/ja/sets/${encodeURIComponent(s[0])}`, 2); if(!b) continue;
+      let set; try{ set = JSON.parse(b); }catch{ continue; }
+      for(const c of set.cards || []) if(c.image){ jobs.push({ key: `jp/${s[0]}:${c.localId}`, url: c.image + "/low.webp" }); n++; }
+    }
+    console.log(`  pokemon: ${n} japanische Karten mit Bild`);
+  }catch{ console.log("  (keine jpdb.json – japanische Fingerabdrücke übersprungen)"); }
   return jobs;
 }
 function onepieceJobs(){
