@@ -1386,14 +1386,16 @@ async function analyzePhoto(file, opts){
         ...(YGO ? [() => readArea(C, CW * 0.45, CH * 0.69, CW * 0.55, CH * 0.08, false, 1300)] : [])
       ]);
     }
-    if(!hit && !promoChoice) hit = await race("Lese Kürzel + Nummer …", [
+    // Karte gefunden und am Bild schon erkannt -> nicht noch lange im ganzen Foto suchen, gleich nachfragen
+    const fpAsk = !!(st && fpRes && fpRes.ok && fpRes.list.length);
+    if(!hit && !promoChoice && !fpAsk) hit = await race("Lese Kürzel + Nummer …", [
       () => readArea(cv, 0, H * 0.78, W, H * 0.22, false, 1500),
       () => readArea(cv, 0, H * 0.78, W, H * 0.22, true, 1500),
       ...(YGO ? [() => readArea(cv, W * 0.3, H * 0.62, W * 0.7, H * 0.17, false, 1300)] : [])
     ]);
     // 2) ganzes Foto (kleiner gerechnet = schneller), dunkle + helle Schrift – dazu für Full-Art-/farbige Karten
     //    der untere Rand mit getrennten Farbkanälen (weiße bzw. dunkle Schrift direkt auf dem Bild)
-    if(!hit && !promoChoice) hit = await race("Suche im ganzen Foto …", [
+    if(!hit && !promoChoice && !fpAsk) hit = await race("Suche im ganzen Foto …", [
       () => readArea(cv, 0, 0, W, H, false, 1600),
       () => readArea(cv, 0, 0, W, H, true, 1600),
       () => readArea(cv, 0, H * 0.78, W, H * 0.22, true, 2100, "min"),
