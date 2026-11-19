@@ -71,8 +71,20 @@ async function fpIdentify(src){
   cand.sort((a, b) => a.d - b.d);
   const best = cand[0];
   if(best.d > FP_MAYBE) return null;
-  // gleiches Motiv (Nachdrucke) = fast gleicher Abstand; „anderes Motiv“ = deutlich weiter weg
-  const group = cand.filter(x => x.d <= best.d + 3), other = cand.find(x => x.d > best.d + 3);
+  // gleiches Motiv (Nachdrucke) = fast gleicher Abstand; „anderes Motiv“ = deutlich weiter weg.
+  // Dieselbe Karte in einer anderen Sprache/Ausgabe (z. B. japanisch) zählt nicht als „anderes Motiv“.
+  if(cand.some(x => x.key.startsWith("jp/")) && typeof jpLoad === "function") await jpLoad();
+  const nameOf = x => {
+    try{
+      if(x.game === "pokemon"){ const [sid, lid] = x.key.split(":");
+        if(sid.startsWith("jp/")){ const e = JP && JP.cards.get(sid.slice(3)) && JP.cards.get(sid.slice(3)).get(lid); return e ? nrm(e[2]) || e[1] : x.key; }
+        const e = CDB && CDB.cards.get(sid) && CDB.cards.get(sid).get(String(lid).toUpperCase()); return e ? nrm(e[2]) : x.key; }
+      if(x.game === "onepiece") return x.key.split("|")[0];
+    }catch{}
+    return x.key;
+  };
+  const bn = nameOf(best);
+  const group = cand.filter(x => x.d <= best.d + 3 || (x.d <= best.d + 8 && nameOf(x) === bn)), other = cand.find(x => x.d > best.d + 3 && nameOf(x) !== bn);
   const gap = other ? other.d - best.d : 99;
   const sure = (best.d <= 24 && gap >= FP_GAP) || (best.d <= FP_SURE && gap >= 12);
   const ok = best.d <= FP_ASK && gap >= 6;   // gut genug, um eine Auswahl anzubieten
@@ -85,6 +97,11 @@ async function fpIdentify(src){
     const id = identity(r.c); if(seen.has(id)) continue; seen.add(id); list.push(r);
   }
   if(ygoPc && !list.length) for(const x of ygoPrintsLabeled(ygoPc, lang)) list.push(x);
+  // gleiches Motiv japanisch + international: die Ausgabe in der eingestellten Sprache bevorzugen
+  if(list.some(x => x.c.jp) && list.some(x => !x.c.jp)){
+    const want = list.filter(x => !!x.c.jp === (lang === "Japanisch"));
+    list.splice(0, list.length, ...want, ...(want.length ? [] : list));
+  }
   return { sure, ok, list, ygoPc, d: best.d, gap, game: best.game };
 }
 
