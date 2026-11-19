@@ -678,6 +678,15 @@ function parseRead(text){
   }
   if(best) return best;
   if(yg) return yg;   // Yu-Gi-Oh!-Passcode (Karte bekannt, Ausgabe wählen)
+  // Black-Star-Promos mit Kürzel in der Nummer: „SWSH283“, „SM210“, „XY123“, „BW45“, „HGSS18“, „DP50“
+  const PROMO = { SWSH: "swshp", SM: "smp", XY: "xyp", BW: "bwp", HGSS: "hgssp", DP: "dpp" };
+  const prm = T.match(/(?:^|[^A-Z0-9])(SWSH|5WSH|SW5H|HGSS|SM|XY|BW|DP)\s?([0-9OISBZ]{2,3})(?![0-9])/);
+  if(prm && typeof CDB !== "undefined" && CDB){
+    const pre = prm[1].replace(/5/g, "S"), n = toDigits(prm[2].replace(/Z/g, "2").replace(/B/g, "8")), sid = PROMO[pre];
+    const m = CDB.cards.get(sid);
+    const lid = m && [pre + n, pre + n.padStart(2, "0"), pre + n.padStart(3, "0"), pre + String(parseInt(n, 10))].find(x => m.has(x));
+    if(lid) return { kind: "pk", code: "", promo: sid, number: lid, lang: "", strong: pre !== "SM" && pre !== "DP" && pre !== "BW" && pre !== "XY" ? true : /\d{2,3}/.test(n), key: `pk:${sid}:${lid}` };
+  }
   // Promo ohne Gesamtzahl: "SVP 049", "MEP 012" – Kürzel muss direkt davor stehen
   const pm = T.match(/\b([A-Z]{2,4}\d?)(?: (?:DE|EN|FR|IT|ES|PT))? ([0-9OIS]{2,3})\b/g) || [];
   for(const x of pm){
@@ -695,6 +704,10 @@ function candidates(r){
     return c.op ? [{ c, label: c.name, sub: `${c.op.id} · ${c.set}` }] : [];
   }
   const language = r.lang || LANG;
+  if(r.promo){
+    const c = applyDb({ set_id: r.promo, number: r.number, language });
+    return c.db ? [{ c: finishPk(c, language), label: language === "Deutsch" && c.db.de ? c.db.de : c.db.en, sub: `${c.db.lid} · ${language === "Deutsch" ? c.db.setDe : c.db.setEn}` }] : [];
+  }
   const [left, right] = r.number.split("/");
   const total = parseInt(String(right || "").replace(/^[A-Z]+/, ""), 10);
   // passt die gedruckte Kartenzahl (/182) zum Set des Kürzels?
@@ -859,13 +872,13 @@ async function makeWorker(){
 function poolNext(){ while(POOL_WAIT.length){ const w = POOL.find(x => !x.busy); if(!w) return; w.busy = true; POOL_WAIT.shift()(w); } }
 const poolGet = () => new Promise(res => { POOL_WAIT.push(res); poolNext(); });
 const poolPut = w => { w.busy = false; poolNext(); };
-async function ocr(canvas, wl){
+async function ocr(canvas, wl, psm){
   const w = await poolGet();
   try{
-    if(wl) await w.setParameters({ tessedit_char_whitelist: wl });
+    if(wl || psm) await w.setParameters({ ...(wl ? { tessedit_char_whitelist: wl } : {}), ...(psm ? { tessedit_pageseg_mode: String(psm) } : {}) });
     return ((await w.recognize(canvas)).data.text || "").replace(/\s+/g, " ").trim();
   } finally {
-    if(wl) await w.setParameters({ tessedit_char_whitelist: WL }).catch(() => {});
+    if(wl || psm) await w.setParameters({ tessedit_char_whitelist: WL, tessedit_pageseg_mode: "11" }).catch(() => {});
     poolPut(w);
   }
 }
@@ -1213,12 +1226,26 @@ function nameIndex(){
   if(YGO) for(const [pc, e] of Object.entries(YGO.c)){ add(nrm(e[0]), { kind: "ygo", pc: +pc }); if(e[1] && nrm(e[1]) !== nrm(e[0])) add(nrm(e[1]), { kind: "ygo", pc: +pc }); }
   return NAMEIDX;
 }
+// Kartennamen unscharf finden (Texterkennung verliest 1–2 Buchstaben: „GalanZapdos“ -> „Galar-Zapdos“)
+function namesFuzzy(text){
+  const idx = nameIndex(), words = String(text || "").split(/[^A-Za-zÀ-ÿ0-9.'’-]+/).filter(w => w.length >= 2);
+  const found = new Map(), keys = [...idx.keys()].filter(k => k.length >= 6);
+  for(let i = 0; i < words.length; i++) for(let n = 3; n >= 1; n--){
+    const k = nrm(words.slice(i, i + n).join("")); if(k.length < 5) continue;
+    if(idx.has(k)){ found.set(k, { d: 0, hits: idx.get(k) }); continue; }
+    if(k.length < 6) continue;
+    const tol = k.length >= 9 ? 2 : 1;
+    for(const x of keys){ if(Math.abs(x.length - k.length) > tol) continue; const d = lev(x, k); if(d <= tol && (!found.has(x) || found.get(x).d > d)) found.set(x, { d, hits: idx.get(x) }); }
+  }
+  // längere Treffer zuerst („Galar-Arktos“ vor „Arktos“), bei gleicher Länge der genauere
+  return [...found.entries()].sort((a, b) => b[0].length - a[0].length || a[1].d - b[1].d).map(([k, v]) => [k, v.hits]);
+}
 // Kartennamen im Freitext finden (1–3 Wörter am Stück)
 function namesInText(text){
   const idx = nameIndex(), words = String(text || "").split(/[^A-Za-zÀ-ÿ0-9.'’-]+/).filter(w => w.length >= 2);
   const found = new Map();
   for(let i = 0; i < words.length; i++) for(let n = 3; n >= 1; n--){
-    const k = nrm(words.slice(i, i + n).join("")); if(k.length < 4) continue;
+    const k = nrm(words.slice(i, i + n).join("")); if(k.length < 5) continue;   // 4 Buchstaben treffen zu oft Zufallstext
     if(idx.has(k) && !found.has(k)) found.set(k, idx.get(k));
   }
   return [...found.entries()].sort((a, b) => b[0].length - a[0].length);
@@ -1256,6 +1283,7 @@ async function analyzePhoto(file, opts){
   // (z. B. Karte vom Bildschirm abfotografiert oder gelber Rand auf hellem Grund)
   const quickShot = !!(opts && opts.quick), fpCands = [];
   if(st) fpCands.push(() => st.canvas);
+  if(st && st.flip) fpCands.push(() => st.flip);
   if(quickShot) fpCands.push(() => cv);
   else {
     if(st) for(const P of st.alts || []) fpCands.push(() => warpCard(cv, P));
@@ -1273,7 +1301,7 @@ async function analyzePhoto(file, opts){
       }
     }catch(e){ console.warn(e); }
     // besserer Ausschnitt gefunden -> auch für die Texterkennung verwenden
-    if(fpRes && fpRes.ok && fpBest && fpBest !== cv && (!st || fpBest !== st.canvas)) st = { canvas: fpBest, alts: [] };
+    if(fpRes && fpRes.ok && fpBest && fpBest !== cv && (!st || fpBest !== st.canvas)) st = { canvas: fpBest, alts: [], flip: st && st.flip === fpBest ? st.canvas : null };
     if(fpRes && fpRes.sure && fpRes.list.length === 1){
       box.remove(); addCard(fpRes.list[0].c, thumb); setStatus("✓ Karte am Bild erkannt."); return;
     }
@@ -1288,6 +1316,30 @@ async function analyzePhoto(file, opts){
     texts.push(text); $("readOut").textContent = text ? text.slice(0, 60) : "–";
     return keep(r);
   };
+  // Promo-Nummern („SWSH283“) werden leicht verlesen -> mit dem Kartennamen oben auf der Karte gegenprüfen
+  let nameTxtP = null, promoChoice = null;
+  const nameText = () => nameTxtP || (nameTxtP = (async () => {
+    if(!st) return "";
+    const srcs = [st.canvas, ...(st.flip ? [st.flip] : [])], jobs = [];
+    // Name steht oben links neben „BASIS“; je nach Ausschnitt (Hülle/Toploader) etwas tiefer -> zwei Lagen
+    // Texterkennung reagiert stark auf den genauen Ausschnitt -> schmale Zeile in mehreren Höhen lesen
+    for(const C of srcs) for(const y of [0.02, 0.045, 0.07, 0.095, 0.12, 0.145])
+      jobs.push(ocr(prepStrip(C, C.width * 0.1, C.height * y, C.width * 0.5, C.height * 0.06, false, 900, false, "max"), FREE_WL, 7).catch(() => ""));
+    const t = (await Promise.all(jobs)).join(" | "); window.__nameTxt = t; return t;
+  })());
+  const nameKey = n => { const w = String(n || "").split(/[\s-]+/).map(nrm).filter(x => x.length >= 4).sort((a, b) => b.length - a.length); return w[0] || nrm(n); };
+  const verifyPromo = async r => {
+    const txt = nrm(await nameText()); if(!txt) return null;
+    // unscharf: Teilstück des gelesenen Texts mit höchstens 1 Fehler (ab 5 Buchstaben)
+    const fz = k => { if(txt.includes(k)) return true; if(k.length < 6) return false; for(let L = k.length - 1; L <= k.length + 1; L++) for(let i = 0; i + L <= txt.length; i++) if(lev(txt.slice(i, i + L), k) <= 1) return true; return false; };
+    const hasName = e => [e[2], e[3]].some(n => n && fz(nameKey(n)));
+    const m = CDB.cards.get(r.promo); const e0 = m && m.get(r.number);
+    if(e0 && hasName(e0)) return { ...r, strong: true };
+    // Nummer verlesen, Name passt aber zu Promos dieser Reihe -> diese zur Auswahl anbieten (nicht raten)
+    const alt = m ? [...m.values()].filter(hasName) : [];
+    if(alt.length && !promoChoice) promoChoice = alt.flatMap(e => candidates({ kind: "pk", promo: r.promo, number: e[0], lang: "" }));
+    return null;
+  };
   // sichere Treffer (Kürzel direkt an der Nummer / One Piece) sofort nehmen, unsichere nur merken
   let weak = null;
   const keep = r => {
@@ -1300,7 +1352,9 @@ async function analyzePhoto(file, opts){
   const readArea = async (src, x, y, w, h, inv, maxW, chan) => {
     const text = await ocr(prepStrip(src, x, y, w, h, inv, maxW || 1700, true, chan));
     texts.push(text); $("readOut").textContent = text ? text.slice(0, 60) : "–";
-    return keep(parseRead(text));
+    let r = parseRead(text);
+    if(r && r.promo && r.strong) r = await verifyPromo(r);
+    return keep(r);
   };
   // mehrere Ausschnitte gleichzeitig lesen; erster sicherer Treffer gewinnt
   const race = async (label, jobs) => {
@@ -1320,21 +1374,26 @@ async function analyzePhoto(file, opts){
     // 0) Karte wurde gefunden und gerade gerückt: dort sitzen Nummer/Kürzel an festen Stellen
     if(st){
       const C = st.canvas, CW = C.width, CH = C.height;
+      // unterer Rand: ganze Breite + linke Hälfte vergrößert (dort steht bei Pokémon Kürzel/Nummer)
+      const bottom = X => [
+        () => readArea(X, 0, X.height * 0.85, X.width, X.height * 0.15, false, 1600),
+        () => readArea(X, 0, X.height * 0.85, X.width, X.height * 0.15, true, 1600),
+        () => readArea(X, 0, X.height * 0.88, X.width * 0.55, X.height * 0.11, false, 1400, "dark"),
+        () => readArea(X, 0, X.height * 0.85, X.width, X.height * 0.15, true, 1800, "min")
+      ];
       hit = await race("Karte erkannt – lese Nummer …", [
-        () => readArea(C, 0, CH * 0.85, CW, CH * 0.15, false, 1600),
-        () => readArea(C, 0, CH * 0.85, CW, CH * 0.15, true, 1600),
-        () => readArea(C, 0, CH * 0.85, CW, CH * 0.15, true, 1800, "min"),
+        ...bottom(C), ...(st.flip ? bottom(st.flip) : []),
         ...(YGO ? [() => readArea(C, CW * 0.45, CH * 0.69, CW * 0.55, CH * 0.08, false, 1300)] : [])
       ]);
     }
-    if(!hit) hit = await race("Lese Kürzel + Nummer …", [
+    if(!hit && !promoChoice) hit = await race("Lese Kürzel + Nummer …", [
       () => readArea(cv, 0, H * 0.78, W, H * 0.22, false, 1500),
       () => readArea(cv, 0, H * 0.78, W, H * 0.22, true, 1500),
       ...(YGO ? [() => readArea(cv, W * 0.3, H * 0.62, W * 0.7, H * 0.17, false, 1300)] : [])
     ]);
     // 2) ganzes Foto (kleiner gerechnet = schneller), dunkle + helle Schrift – dazu für Full-Art-/farbige Karten
     //    der untere Rand mit getrennten Farbkanälen (weiße bzw. dunkle Schrift direkt auf dem Bild)
-    if(!hit) hit = await race("Suche im ganzen Foto …", [
+    if(!hit && !promoChoice) hit = await race("Suche im ganzen Foto …", [
       () => readArea(cv, 0, 0, W, H, false, 1600),
       () => readArea(cv, 0, 0, W, H, true, 1600),
       () => readArea(cv, 0, H * 0.78, W, H * 0.22, true, 2100, "min"),
@@ -1342,7 +1401,8 @@ async function analyzePhoto(file, opts){
     ]);
     // 3) waagerechte Streifen – je 2 Lagen × 2 Schriftfarben parallel
     const bands = quick ? [0.66, 0.58, 0.86] : [0.66, 0.58, 0.5, 0.42, 0.34, 0.86];
-    for(let i = 0; !hit && i < bands.length; i += 2){
+    // Streifen nur, wenn keine Karte gefunden wurde (sonst kostet das viel Zeit und bringt selten etwas)
+    for(let i = 0; !hit && !promoChoice && !st && i < bands.length; i += 2){
       const jobs = [];
       for(const b of bands.slice(i, i + 2)){
         const y = Math.max(0, H * b - H * 0.04), h = Math.min(H - y, H * 0.2);
@@ -1351,7 +1411,7 @@ async function analyzePhoto(file, opts){
       hit = await race(`Suche Kürzel + Nummer … ${Math.min(i + 2, bands.length)}/${bands.length}`, jobs);
     }
     // 4) Querformat / gedrehte Karte (nicht beim Auto-Foto – da liegt die Karte gerade im Rahmen)
-    if(!hit && !quick){
+    if(!hit && !quick && !promoChoice && !st){
       const rot = dir => { const rc = document.createElement("canvas"); rc.width = H; rc.height = W; const g = rc.getContext("2d"); g.translate(dir > 0 ? H : 0, dir > 0 ? 0 : W); g.rotate(dir * Math.PI / 2); g.drawImage(cv, 0, 0); return rc; };
       const r1 = rot(1), r2 = rot(-1);
       hit = await race("Gedrehte Karte prüfen …", [() => readArea(r1, 0, 0, H, W, false, 1600), () => readArea(r2, 0, 0, H, W, false, 1600)]);
@@ -1374,6 +1434,15 @@ async function analyzePhoto(file, opts){
       if(await handleRead(hit, thumb, keepCam)) setStatus(hit.strong || hit.kind === "op" ? "✓ Karte aus dem Foto übernommen." : "✓ Karte nach deiner Bestätigung übernommen.");
       return;
     }
+    // 3a) Promo-Name erkannt, Nummer unsicher -> passende Promos zur Auswahl
+    if(promoChoice && promoChoice.length){
+      box.remove(); paused = wasPaused;
+      const msg = promoChoice.length > 1 ? `„${promoChoice[0].label}“ erkannt – welche Promo-Nummer steht unten links?` : `Ist es „${promoChoice[0].label}“ (${promoChoice[0].c.db.lid})?`;
+      if(keepCam){ inlinePick(promoChoice, thumb, msg); return; }
+      paused = true; const pick = await chooseFrom(promoChoice, thumb, msg); paused = wasPaused;
+      if(pick){ addCard(pick.c, thumb); setStatus("✓ Karte übernommen."); }
+      return;
+    }
     // 3b) Nummer nicht lesbar, aber am Bild erkannt -> Ausgabe auswählen
     if(fpRes && fpRes.ok && fpRes.list.length){
       box.remove(); paused = wasPaused;
@@ -1389,7 +1458,9 @@ async function analyzePhoto(file, opts){
     const free = frees.join(" ");
     const all = texts.join(" ") + " " + free;
     const nums = [...all.toUpperCase().matchAll(/\b([A-Z]{0,2}\d{1,3})\s*\/\s*([A-Z]{0,2}\d{2,3})\b/g)].map(m => m[1].replace(/^0+(?=\d)/, ""));
-    const names = namesInText(free);
+    let names = namesInText(free);
+    if(st){ const nf = namesFuzzy(await nameText()); names = [...nf.filter(([k]) => !names.some(([k2]) => k2 === k)), ...names].slice(0, 6); }
+    const allUp = all.toUpperCase().replace(/[^A-Z0-9]/g, "");
     const lang = LANG;
     const list = [];
     for(const [, hits] of names.slice(0, 3)){
@@ -1403,9 +1474,11 @@ async function analyzePhoto(file, opts){
         } else {
           const lid = String(h.e[0]);
           const numOk = nums.some(n => lidVariants(n).includes(lid.toUpperCase()));
-          if(nums.length && !numOk) continue;
+          if(nums.length && !numOk && !/^[A-Z]/.test(lid)) continue;
+          // Teil der Nummer gelesen (z. B. „SWSH28“)? -> nach oben sortieren
+          const part = lid.toUpperCase().length >= 4 && allUp.includes(lid.toUpperCase().slice(0, -1)) ? 1 : 0;
           const c = applyDb({ set_code: h.st.code || "", set: h.st.en, set_en: h.st.en, name: h.e[2], name_en: h.e[2], number: `${lid}/${h.st.total || ""}`, language: lang });
-          if(c.db) list.push({ c: finishPk(c, lang), label: lang === "Deutsch" && h.e[3] ? h.e[3] : h.e[2], sub: `${h.st.code ? h.st.code + " · " : ""}${lang === "Deutsch" ? h.st.de || h.st.en : h.st.en} · Nr. ${lid}`, score: numOk ? 2 : 1 });
+          if(c.db) list.push({ c: finishPk(c, lang), label: lang === "Deutsch" && h.e[3] ? h.e[3] : h.e[2], sub: `${h.st.code ? h.st.code + " · " : ""}${lang === "Deutsch" ? h.st.de || h.st.en : h.st.en} · Nr. ${lid}`, score: (numOk ? 2 : 1) + part });
         }
       }
     }
