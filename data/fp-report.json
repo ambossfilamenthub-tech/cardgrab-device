@@ -17,13 +17,13 @@
   "total": 25315,
   "have": 24338,
   "test": {
-   "n": 150,
-   "top1": 99,
-   "top5": 150,
-   "dTrueMed": 16,
-   "dTrueMax": 34,
-   "dOtherMed": 20,
-   "dOtherMin": 6
+   "n": 0,
+   "top1": 0,
+   "top5": 0,
+   "dTrueMed": null,
+   "dTrueMax": 0,
+   "dOtherMed": null,
+   "dOtherMin": null
   }
  },
  "yugioh": {
