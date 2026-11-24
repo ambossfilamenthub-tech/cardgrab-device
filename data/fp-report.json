@@ -1,5 +1,5 @@
 {
- "date": "2026-11-23",
+ "date": "2026-11-24",
  "onepiece": {
   "total": 5112,
   "have": 4499,
@@ -30,13 +30,13 @@
   "total": 14876,
   "have": 14897,
   "test": {
-   "n": 2,
-   "top1": 2,
-   "top5": 2,
-   "dTrueMed": 14,
-   "dTrueMax": 14,
-   "dOtherMed": 34,
-   "dOtherMin": 30
+   "n": 0,
+   "top1": 0,
+   "top5": 0,
+   "dTrueMed": null,
+   "dTrueMax": 0,
+   "dOtherMed": null,
+   "dOtherMin": null
   }
  }
 }
